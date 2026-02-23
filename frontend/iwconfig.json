@@ -1,0 +1,35 @@
+{
+  "iwSdk": {
+    "projectName": "Aetherstore Engine",
+    "version": "1.0.0",
+    "description": "3D Fashion Platform with IWSDK integration",
+    "template": "default",
+    "features": {
+      "handTracking": true,
+      "spatialInteractions": true,
+      "uiKitML": true,
+      "locomotion": true,
+      "grabSystem": true,
+      "spatialAudio": true,
+      "sceneUnderstanding": false
+    },
+    "rendering": {
+      "engine": "threejs",
+      "quality": "high",
+      "shadows": "soft",
+      "lighting": "realistic"
+    },
+    "performance": {
+      "targetFps": 90,
+      "maxPolyCount": 100000,
+      "textureResolution": "4k",
+      "compression": "enabled"
+    },
+    "integrations": {
+      "backendApi": "http://localhost:8000/api",
+      "commerce": true,
+      "analytics": true,
+      "aiServices": true
+    }
+  }
+}

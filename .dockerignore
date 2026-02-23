@@ -1,0 +1,11 @@
+.git
+.gitignore
+*.md
+node_modules
+__pycache__
+*.pyc
+.env
+.DS_Store
+.vscode
+.idea
+

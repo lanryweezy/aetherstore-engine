@@ -1,0 +1,65 @@
+services:
+  # Backend API Service
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: aetherstore-backend
+    ports:
+      - "8000:8000"
+    environment:
+      - DATABASE_URL=sqlite:///./aetherstore.db
+      - DEBUG=True
+      - ENVIRONMENT=development
+      - LOG_LEVEL=INFO
+      - CORS_ORIGINS=http://localhost:8080,http://localhost:3000,http://127.0.0.1:8080
+      - SECRET_KEY=dev-secret-key-change-in-production-min-32-chars
+    volumes:
+      - ./backend:/app
+      - backend-data:/app/uploads
+      - backend-temp:/app/temp
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health').read()"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 10s
+
+  # Frontend Development Server
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: aetherstore-frontend
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NODE_ENV=docker
+      - PORT=8080
+      - CHOKIDAR_USEPOLLING=true
+    depends_on:
+      - backend
+    restart: unless-stopped
+
+  # Optional: PostgreSQL Database (uncomment if you want to use PostgreSQL instead of SQLite)
+  # postgres:
+  #   image: postgres:15-alpine
+  #   container_name: aetherstore-db
+  #   environment:
+  #     - POSTGRES_DB=aetherstore
+  #     - POSTGRES_USER=aetherstore
+  #     - POSTGRES_PASSWORD=aetherstore_dev
+  #   ports:
+  #     - "5432:5432"
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   restart: unless-stopped
+
+volumes:
+  backend-data:
+  backend-temp:
+  # postgres-data:

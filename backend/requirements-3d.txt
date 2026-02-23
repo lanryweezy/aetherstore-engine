@@ -1,0 +1,50 @@
+# requirements-3d.txt
+# Additional Python dependencies for 3D processing in Aetherstore Engine
+
+# 3D Processing
+trimesh==4.0.5
+networkx==3.2.1
+scipy==1.11.4
+matplotlib==3.8.2
+# Note: For full 3D processing, you may also need:
+# - pyglet (for OpenGL rendering)
+# - scikit-learn (for machine learning)
+# - tensorflow or pytorch (for deep learning)
+
+# Image processing for 3D textures
+Pillow==10.1.0
+imageio==2.33.0
+scikit-image==0.22.0
+
+# File format support
+# For GLB/GLTF files
+# For OBJ files
+# For STL files
+# For PLY files
+
+# Visualization
+pyglet==2.0.10
+# Note: pyglet requires OpenGL support
+
+# Scientific computing
+numpy==1.26.2
+pandas==2.1.3
+
+# Machine learning (optional)
+scikit-learn==1.3.2
+# tensorflow==2.15.0  # Uncomment for TensorFlow support
+# torch==2.1.1        # Uncomment for PyTorch support
+
+# Point cloud processing
+open3d==0.18.0  # Optional, for advanced point cloud operations
+
+# Mesh processing
+meshio==5.3.4  # For various mesh format conversions
+
+# Geometry processing
+# These are often included with trimesh but listed for completeness:
+rtree==1.2.0  # For spatial indexing
+
+# Visualization libraries
+plotly==5.18.0
+# kaleido==0.2.1  # For static image export from plotly

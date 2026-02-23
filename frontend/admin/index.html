@@ -1,0 +1,271 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aetherstore Admin - Create Your 3D Store</title>
+    <link rel="stylesheet" href="../styles/tailwind.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800;900&family=Poppins:wght@300;400;500;600;700;800;900&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="flex min-h-screen bg-gradient-to-br from-dark-950 via-dark-900 to-dark-800">
+        <!-- Futuristic Sidebar Navigation -->
+        <div class="w-64 bg-dark-900 border-r border-dark-700 glass-dark fixed h-full overflow-y-auto">
+            <div class="p-6 border-b border-dark-700">
+                <h2 class="text-2xl font-display font-bold gradient-text-glow">Aetherstore Admin</h2>
+            </div>
+            <nav class="p-4">
+                <ul class="space-y-2">
+                    <li><a href="dashboard.html" class="nav-link-active block px-4 py-3 rounded-lg bg-primary-500 bg-opacity-20 text-neon-cyan border border-primary-500 shadow-glow">Dashboard</a></li>
+                    <li><a href="#store-design" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Store Design</a></li>
+                    <li><a href="#products" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Products</a></li>
+                    <li><a href="#social" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Social Features</a></li>
+                    <li><a href="#vr" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">VR/AR Settings</a></li>
+                    <li><a href="#nft" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Digital Assets</a></li>
+                    <li><a href="#analytics" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Analytics</a></li>
+                    <li><a href="#settings" class="nav-link block px-4 py-3 rounded-lg text-dark-300 hover:bg-dark-800 hover:text-neon-cyan transition-all duration-200">Settings</a></li>
+                </ul>
+            </nav>
+        </div>
+
+        <!-- Main Content -->
+        <div class="ml-64 flex-1 p-8">
+            <!-- Dashboard -->
+            <section id="dashboard" class="content-section active">
+                <div class="mb-8">
+                    <h1 class="text-4xl font-display font-bold text-neon-cyan mb-2 text-glow">Brand Dashboard</h1>
+                    <p class="text-dark-400">Welcome back! Here's your store performance overview.</p>
+                </div>
+                <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+                    <div class="metric-card card-glow">
+                        <div class="metric-label text-xs uppercase tracking-wider text-dark-400">Visitors</div>
+                        <div class="metric-value text-4xl font-black text-neon-cyan text-glow">1,248</div>
+                        <div class="metric-trend trend-up flex items-center mt-2">
+                            <span class="text-green-400">↑ 12%</span>
+                            <span class="text-dark-500 ml-2 text-sm">this month</span>
+                        </div>
+                    </div>
+                    <div class="metric-card card-glow">
+                        <div class="metric-label text-xs uppercase tracking-wider text-dark-400">Try-Ons</div>
+                        <div class="metric-value text-4xl font-black text-neon-pink text-glow">342</div>
+                        <div class="metric-trend trend-up flex items-center mt-2">
+                            <span class="text-green-400">↑ 8%</span>
+                            <span class="text-dark-500 ml-2 text-sm">this month</span>
+                        </div>
+                    </div>
+                    <div class="metric-card card-glow">
+                        <div class="metric-label text-xs uppercase tracking-wider text-dark-400">Orders</div>
+                        <div class="metric-value text-4xl font-black text-neon-purple text-glow">89</div>
+                        <div class="metric-trend trend-up flex items-center mt-2">
+                            <span class="text-green-400">↑ 15%</span>
+                            <span class="text-dark-500 ml-2 text-sm">this month</span>
+                        </div>
+                    </div>
+                    <div class="metric-card card-glow">
+                        <div class="metric-label text-xs uppercase tracking-wider text-dark-400">Revenue</div>
+                        <div class="metric-value text-4xl font-black text-neon-cyan text-glow">$12,450</div>
+                        <div class="metric-trend trend-up flex items-center mt-2">
+                            <span class="text-green-400">↑ 22%</span>
+                            <span class="text-dark-500 ml-2 text-sm">this month</span>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Store Design Section -->
+            <section id="store-design" class="content-section">
+                <div class="section-header">
+                    <h1>Design Your 3D Store</h1>
+                </div>
+                <div class="store-design-content">
+                    <div class="store-template-selector">
+                        <h3>Choose a Template</h3>
+                        <div class="template-grid">
+                            <div class="template-item active" data-template="modern-gallery">
+                                <img src="templates/modern-gallery.jpg" alt="Modern Gallery">
+                                <h4>Modern Gallery</h4>
+                                <p>Clean, minimalist design</p>
+                            </div>
+                            <div class="template-item" data-template="vintage-loft">
+                                <img src="templates/vintage-loft.jpg" alt="Vintage Loft">
+                                <h4>Vintage Loft</h4>
+                                <p>Industrial, rustic feel</p>
+                            </div>
+                            <div class="template-item" data-template="luxury-palace">
+                                <img src="templates/luxury-palace.jpg" alt="Luxury Palace">
+                                <h4>Luxury Palace</h4>
+                                <p>Opulent, elegant design</p>
+                            </div>
+                            <div class="template-item" data-template="futuristic-showroom">
+                                <img src="templates/futuristic-showroom.jpg" alt="Futuristic Showroom">
+                                <h4>Futuristic Showroom</h4>
+                                <p>High-tech, modern</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="store-customization">
+                        <h3>Customize Your Store</h3>
+                        <div class="customization-options">
+                            <div class="color-scheme">
+                                <h4>Color Scheme</h4>
+                                <div class="color-picker">
+                                    <input type="color" id="primary-color" value="#4ecdc4">
+                                    <label for="primary-color">Primary Color</label>
+                                </div>
+                                <div class="color-picker">
+                                    <input type="color" id="secondary-color" value="#ff6b6b">
+                                    <label for="secondary-color">Secondary Color</label>
+                                </div>
+                            </div>
+
+                            <div class="lighting-options">
+                                <h4>Lighting</h4>
+                                <select id="lighting-setting">
+                                    <option value="bright">Bright & Airy</option>
+                                    <option value="warm">Warm & Cozy</option>
+                                    <option value="dramatic">Dramatic & Focused</option>
+                                    <option value="natural">Natural Daylight</option>
+                                </select>
+                            </div>
+
+                            <div class="layout-options">
+                                <h4>Layout</h4>
+                                <div class="layout-grid">
+                                    <div class="layout-option active" data-layout="grid">
+                                        <div class="layout-preview">Grid</div>
+                                        <label>Grid Layout</label>
+                                    </div>
+                                    <div class="layout-option" data-layout="circular">
+                                        <div class="layout-preview">Circle</div>
+                                        <label>Circular</label>
+                                    </div>
+                                    <div class="layout-option" data-layout="freeform">
+                                        <div class="layout-preview">Freeform</div>
+                                        <label>Freeform</label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="3d-preview">
+                        <h3>3D Store Preview</h3>
+                        <div class="preview-container">
+                            <div class="preview-placeholder">
+                                <p>3D Store Visualization</p>
+                                <button id="enter-preview">Enter Store</button>
+                            </div>
+                        </div>
+                        <div class="preview-controls">
+                            <button id="save-store">Save Store Design</button>
+                            <button id="publish-store">Publish Store</button>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Products Section -->
+            <section id="products" class="content-section">
+                <div class="section-header">
+                    <h1>Manage Products</h1>
+                    <button class="btn-primary" id="add-product-btn">Add Product</button>
+                </div>
+                <div class="products-content">
+                    <div class="product-filters">
+                        <input type="text" placeholder="Search products..." id="product-search">
+                        <select id="product-category">
+                            <option value="all">All Categories</option>
+                            <option value="tops">Tops</option>
+                            <option value="bottoms">Bottoms</option>
+                            <option value="dresses">Dresses</option>
+                            <option value="outerwear">Outerwear</option>
+                            <option value="shoes">Shoes</option>
+                            <option value="accessories">Accessories</option>
+                        </select>
+                    </div>
+
+                    <div class="product-grid">
+                        <!-- Products will be loaded here dynamically -->
+                    </div>
+                </div>
+            </section>
+
+            <!-- Product Modal -->
+            <div id="product-modal" class="modal">
+                <div class="modal-content">
+                    <span class="close">&times;</span>
+                    <h2 id="modal-title">Add New Product</h2>
+                    <form id="product-form">
+                        <div class="form-group">
+                            <label for="product-name">Product Name</label>
+                            <input type="text" id="product-name" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-description">Description</label>
+                            <textarea id="product-description" rows="3"></textarea>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-price">Price ($)</label>
+                            <input type="number" id="product-price" step="0.01" required>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-category">Category</label>
+                            <select id="product-category" required>
+                                <option value="">Select a category</option>
+                                <option value="tops">Tops</option>
+                                <option value="bottoms">Bottoms</option>
+                                <option value="dresses">Dresses</option>
+                                <option value="outerwear">Outerwear</option>
+                                <option value="shoes">Shoes</option>
+                                <option value="accessories">Accessories</option>
+                            </select>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-sizes">Sizes</label>
+                            <div class="size-checkboxes">
+                                <label><input type="checkbox" value="XS"> XS</label>
+                                <label><input type="checkbox" value="S"> S</label>
+                                <label><input type="checkbox" value="M"> M</label>
+                                <label><input type="checkbox" value="L"> L</label>
+                                <label><input type="checkbox" value="XL"> XL</label>
+                                <label><input type="checkbox" value="XXL"> XXL</label>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-colors">Colors</label>
+                            <div class="color-inputs">
+                                <input type="color" value="#000000">
+                                <input type="color" value="#ffffff">
+                                <button type="button" id="add-color">+ Add Color</button>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-3d-model">3D Model</label>
+                            <input type="file" id="product-3d-model" accept=".glb,.gltf">
+                            <div class="model-preview">
+                                <p>Upload a 3D model file (GLB/GLTF format)</p>
+                            </div>
+                        </div>
+                        <div class="form-group">
+                            <label for="product-images">Product Images</label>
+                            <input type="file" id="product-images" multiple accept="image/*">
+                            <div class="image-previews">
+                                <!-- Images will appear here -->
+                            </div>
+                        </div>
+                        <div class="form-actions">
+                            <button type="submit" class="btn-primary">Save Product</button>
+                            <button type="button" class="btn-secondary cancel-btn">Cancel</button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="admin.js"></script>
+</body>
+</html>
