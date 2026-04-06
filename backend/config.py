@@ -11,6 +11,7 @@ class Settings(BaseSettings):
     APP_VERSION: str = "1.0.0"
     DEBUG: bool = False
     ENVIRONMENT: str = "development"
+    SENTRY_DSN: Optional[str] = None
     
     # Database settings
     DATABASE_URL: str = "postgresql://localhost/aetherstore_dev"
@@ -81,6 +82,9 @@ class Settings(BaseSettings):
     LOG_LEVEL: str = "INFO"
     LOG_FILE: str = "app.log"
     
+    # Security Hardening
+    RATE_LIMIT_PER_MINUTE: int = 60
+
     class Config:
         env_file = ".env"
         case_sensitive = False
