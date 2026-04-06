@@ -168,11 +168,22 @@ class Advanced3DRenderer {
     scaleAvatar(measurements) {
         if (!this.avatar || !measurements) return;
         
-        // Scale avatar based on height measurement (simplified)
-        const baseHeight = 1.75; // meters
-        const scaleFactor = (measurements.height / 100) / baseHeight;
+        // Non-uniform scaling based on proportional AI factors
+        if (measurements.scale_factors) {
+            const sf = measurements.scale_factors;
+            console.log('Applying proportional AI scaling:', sf);
+            this.avatar.scale.set(sf.x, sf.y, sf.z);
+        } else {
+            // Fallback: Uniform scaling based on height only
+            const baseHeight = 175.0; // cm
+            const scaleFactor = measurements.height / baseHeight;
+            this.avatar.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        }
         
-        this.avatar.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        // Adjust position so feet stay on the floor
+        const box = new THREE.Box3().setFromObject(this.avatar);
+        const height = box.max.y - box.min.y;
+        this.avatar.position.y = 0; // Feet should be at 0 in a well-modeled avatar
     }
     
     async loadProduct(modelPath, productId, position = {x: 0, y: 0, z: 0}) {

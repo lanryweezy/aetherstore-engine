@@ -309,18 +309,30 @@ class RealBodyMeasurementModel:
             # This is approximate
             scale = 170.0 / body_height_px  # Assume average height of 170cm
         
+        # Proportions based on average human (height ~7.5 - 8 heads)
+        avg_height = 175.0
+        avg_shoulder = 43.0
+        avg_waist = 80.0
+        avg_hips = 95.0
+
+        current_height = reference_height or (body_height_px * scale)
+        shoulder_width = shoulder_width_px * scale
+        waist_width = hip_width_px * scale * 0.85
+        hips_width = hip_width_px * scale
+
         measurements = {
-            "shoulder_width": shoulder_width_px * scale,
-            "chest": shoulder_width_px * scale * 1.1,  # Chest is wider than shoulders
-            "waist": hip_width_px * scale * 0.85,  # Waist is narrower than hips
-            "hips": hip_width_px * scale,
+            "shoulder_width": shoulder_width,
+            "chest": shoulder_width * 1.1,
+            "waist": waist_width,
+            "hips": hips_width,
+            "height": current_height,
+            # Proportional scale factors for 3D rendering (relative to average model)
+            "scale_factors": {
+                "y": current_height / avg_height,
+                "x": (shoulder_width / avg_shoulder + hips_width / avg_hips) / 2,
+                "z": (waist_width / avg_waist + hips_width / avg_hips) / 2
+            }
         }
-        
-        # Estimate other measurements based on proportions
-        if reference_height:
-            measurements["height"] = reference_height
-        else:
-            measurements["height"] = body_height_px * scale
         
         # Estimate arm length, inseam, etc. based on body proportions
         measurements["arm_length"] = measurements["height"] * 0.38
