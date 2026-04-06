@@ -564,13 +564,31 @@ class Advanced3DRenderer {
         console.log('Added fit indicators for poor fit');
     }
     
-    applyStyleRecommendations(product, fitAnalysis) {
-        // Apply style adjustments based on recommendations
+    async applyStyleRecommendations(product, fitAnalysis) {
+        // Apply style adjustments and visual tooltips based on AI suggestions
         if (!fitAnalysis || !product) return;
         
-        // In a real implementation, this would adjust colors, textures, or styling
-        // based on the AI's style recommendations
-        console.log('Applied style recommendations');
+        console.log('Fetching AI Styling Advice...');
+        try {
+            // Call the AI Consultant backend
+            const response = await fetch(`/api/consultant/styling-advice/${window.userId || 'guest'}?body_type=${fitAnalysis.body_type || 'hourglass'}`);
+            const adviceData = await response.json();
+
+            if (adviceData.success && adviceData.styling_advice) {
+                this.showStylingTooltips(product, adviceData.styling_advice);
+            }
+        } catch (error) {
+            console.warn('Could not load AI styling advice:', error);
+        }
+    }
+
+    showStylingTooltips(product, adviceList) {
+        // Create 3D floating tooltips for styling advice
+        adviceList.forEach((advice, index) => {
+            console.log(`AI Suggestion ${index + 1}: ${advice}`);
+            // In a full implementation, this would create THREE.Sprite or HTML overlays
+            // for the 3D scene pointing to relevant parts of the garment.
+        });
     }
 }
 

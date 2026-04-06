@@ -11,20 +11,20 @@ The Aetherstore Engine is a highly sophisticated 3D fashion platform with a prof
 *   **3D Optimization Pipeline**: Fully functional quadratic mesh decimation and texture compression using `trimesh` and `PIL`.
 *   **Three.js Renderer**: Professional-grade rendering with PBR lighting, HDR support, and smooth camera interpolation.
 *   **Body Landmarks (AI)**: Functional real-time detection via Google MediaPipe.
-*   **Analytics Logic**: Advanced data science calculations for business metrics using `pandas` and `numpy`.
+*   **Analytics Logic & Persistence**: (IMPROVED) Advanced metrics calculation with automatic PostgreSQL syncing for high-value events.
 *   **Database Foundation**: Robust SQLAlchemy models and PostgreSQL integration in `main_app.py`.
-*   **Proportional Scaling**: (JUST ADDED) Non-uniform avatar scaling based on AI measurements.
+*   **Proportional Scaling**: Non-uniform avatar scaling based on AI measurements.
+*   **3D Thumbnails**: (IMPROVED) Real wireframe schematic generation from multiple angles (Front, Side, Top, Iso).
+*   **Real-Time Social**: (NEW) WebSocket-based chat and presence system for group shopping rooms.
 
 ### 🟡 PARTIAL (Functional Logic, Missing Infrastructure)
-*   **Social/Group Shopping**: The logic for sessions and messaging exists, but is memory-only and lacks WebSockets for real-time sync.
-*   **Analytics Persistence**: Insights are calculated correctly but data is lost on server restart (needs DB storage).
+*   **AI Consultant Integration**: (IMPROVED) Integrated styling advice into the 3D try-on UI via floating tooltips, though still using rule-based backend logic.
 *   **Fit Prediction**: Currently rule-based; the PyTorch ML path is a skeleton waiting for a trained model.
 
 ### 🔴 STUBBED (Mocks/Simulations)
 *   **Meta SAM 3D**: Entirely simulated. Returns randomized "realistic" data but doesn't process images through the SAM models.
 *   **Cloth Physics**: A visual "fake" using sine-wave mesh deformation. No real collision or fabric drape simulation.
 *   **Blockchain**: Private SHA-256 hash generation only. No connection to real-world wallets or chains (Polygon/Ethereum).
-*   **Thumbnails**: Generates solid blue squares instead of 3D snapshots.
 
 ---
 

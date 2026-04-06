@@ -11,6 +11,10 @@ from enum import Enum
 import asyncio
 import json
 from collections import defaultdict
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import StoreAnalytics, ProductAnalytics, TryOnSession, Order, OrderItem
+from sqlalchemy import func
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -74,7 +78,7 @@ class AnalyticsEngine:
     """Advanced analytics engine for Aetherstore platform"""
     
     def __init__(self):
-        self.events_db = []  # In production, this would be a real database
+        self.events_db = []  # Temporary buffer before DB sync
         self.user_metrics_cache = {}
         self.product_metrics_cache = {}
         self.store_metrics_cache = {}
@@ -83,10 +87,77 @@ class AnalyticsEngine:
         logger.info("Analytics Engine initialized")
     
     def add_event(self, event_data: EventData):
-        """Add an event to the analytics database"""
+        """Add an event to the analytics database and persist to DB"""
         self.events_db.append(event_data)
-        self.is_calculated = False  # Mark that calculations need to be redone
+        self.is_calculated = False
+
+        # Persist specific events to PostgreSQL
+        try:
+            db = SessionLocal()
+            if event_data.event_type == EventType.PURCHASE:
+                # Update Store and Product Analytics tables
+                self._update_db_metrics(db, event_data)
+            elif event_data.event_type == EventType.TRY_ON:
+                self._update_tryon_db(db, event_data)
+            db.close()
+        except Exception as e:
+            logger.error(f"Failed to persist event to DB: {e}")
+
         logger.info(f"Added event: {event_data.event_type.value} for user {event_data.user_id}")
+
+    def _update_db_metrics(self, db: Session, event: EventData):
+        """Update persistent database tables for business metrics"""
+        date_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Update Store Analytics
+        store_stat = db.query(StoreAnalytics).filter(
+            StoreAnalytics.store_id == event.store_id,
+            StoreAnalytics.date == date_today
+        ).first()
+
+        if not store_stat:
+            store_stat = StoreAnalytics(store_id=event.store_id, date=date_today)
+            db.add(store_stat)
+
+        store_stat.purchase_count += 1
+        # Revenue update would happen here with real transaction data
+
+        # Update Product Analytics
+        if event.product_id:
+            prod_stat = db.query(ProductAnalytics).filter(
+                ProductAnalytics.product_id == event.product_id,
+                ProductAnalytics.date == date_today
+            ).first()
+
+            if not prod_stat:
+                prod_stat = ProductAnalytics(product_id=event.product_id, date=date_today)
+                db.add(prod_stat)
+            prod_stat.purchase_count += 1
+
+        db.commit()
+
+    def _update_tryon_db(self, db: Session, event: EventData):
+        """Update try-on counters in DB"""
+        date_today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+        # Update Store try-on count
+        store_stat = db.query(StoreAnalytics).filter(
+            StoreAnalytics.store_id == event.store_id,
+            StoreAnalytics.date == date_today
+        ).first()
+        if store_stat:
+            store_stat.tryon_sessions_count += 1
+
+        # Update Product try-on count
+        if event.product_id:
+            prod_stat = db.query(ProductAnalytics).filter(
+                ProductAnalytics.product_id == event.product_id,
+                ProductAnalytics.date == date_today
+            ).first()
+            if prod_stat:
+                prod_stat.tryon_count += 1
+
+        db.commit()
     
     def add_events_batch(self, events: List[EventData]):
         """Add multiple events at once"""

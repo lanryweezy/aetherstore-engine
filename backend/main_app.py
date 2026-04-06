@@ -1,7 +1,7 @@
 # main_app.py
 # Main FastAPI application for Aetherstore Engine
 
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, WebSocket, WebSocketDisconnect
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
@@ -53,6 +53,60 @@ class MonitoringMiddleware(BaseHTTPMiddleware):
         return await monitoring_middleware(request, call_next)
 
 app.add_middleware(MonitoringMiddleware)
+
+# WebSocket manager for social shopping
+from typing import Dict, List
+
+class ConnectionManager:
+    def __init__(self):
+        self.active_connections: Dict[str, List[WebSocket]] = {}
+
+    async def connect(self, room_id: str, websocket: WebSocket):
+        await websocket.accept()
+        if room_id not in self.active_connections:
+            self.active_connections[room_id] = []
+        self.active_connections[room_id].append(websocket)
+
+    def disconnect(self, room_id: str, websocket: WebSocket):
+        if room_id in self.active_connections:
+            self.active_connections[room_id].remove(websocket)
+
+    async def broadcast(self, room_id: str, message: dict):
+        if room_id in self.active_connections:
+            for connection in self.active_connections[room_id]:
+                await connection.send_json(message)
+
+manager = ConnectionManager()
+
+@app.websocket("/ws/social/{room_id}/{user_id}")
+async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
+    await manager.connect(room_id, websocket)
+    try:
+        # Broadcast user joined
+        await manager.broadcast(room_id, {
+            "type": "presence",
+            "user_id": user_id,
+            "status": "joined",
+            "timestamp": datetime.now().isoformat()
+        })
+
+        while True:
+            data = await websocket.receive_json()
+            # Broadcast message to all users in the room
+            await manager.broadcast(room_id, {
+                "type": "chat",
+                "user_id": user_id,
+                "message": data.get("message"),
+                "timestamp": datetime.now().isoformat()
+            })
+    except WebSocketDisconnect:
+        manager.disconnect(room_id, websocket)
+        await manager.broadcast(room_id, {
+            "type": "presence",
+            "user_id": user_id,
+            "status": "left",
+            "timestamp": datetime.now().isoformat()
+        })
 
 # Mount static files for frontend
 if os.path.exists("../frontend"):
