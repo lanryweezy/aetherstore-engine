@@ -65,6 +65,7 @@ class ModelProcessor:
     """Service for processing and optimizing 3D models"""
     
     def __init__(self):
+        import numpy as np # Ensure numpy is available
         """Initialize the model processor"""
         self.supported_formats = [".glb", ".gltf", ".obj", ".fbx", ".ply", ".stl"]
         self.optimization_levels = {

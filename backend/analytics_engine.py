@@ -477,9 +477,17 @@ class AnalyticsEngine:
         return trends
     
     def get_heatmap_data(self, store_id: str) -> Dict:
-        """Get heatmap data for store analytics"""
+        """Get heatmap data for store analytics including spatial 3D points"""
         store_events = [e for e in self.events_db if e.store_id == store_id]
         
+        # Spatial 3D clicks
+        spatial_points = []
+        for e in store_events:
+            if e.event_type == EventType.PRODUCT_VIEW and e.additional_data:
+                coords = e.additional_data.get("coords_3d")
+                if coords:
+                    spatial_points.append(coords)
+
         # By hour of day
         hour_activity = defaultdict(int)
         for event in store_events:
@@ -500,6 +508,7 @@ class AnalyticsEngine:
             "hourly_activity": dict(hour_activity),
             "daily_activity": dict(day_activity),
             "product_interactions": dict(product_interactions),
+            "spatial_heatmap_3d": spatial_points,
             "total_interactions": len(store_events)
         }
 

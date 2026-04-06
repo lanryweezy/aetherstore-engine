@@ -173,6 +173,7 @@ async def read_root():
     """
 
 @app.get("/health")
+@app.get("/api/health") # Backwards compatibility
 async def health_check():
     """Health check endpoint"""
     db_healthy = get_db_health()

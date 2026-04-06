@@ -329,3 +329,36 @@ class InventoryLog(Base):
     reason = Column(String(255)) # purchase, restock, return, adjustment
     remaining_stock = Column(Integer, nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class UserStyleProfile(Base):
+    __tablename__ = "user_style_profiles"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    body_type = Column(String(50))
+    height = Column(Float)
+    age = Column(Integer)
+    style_preferences = Column(JSON) # List of styles
+    color_preferences = Column(JSON) # List of colors
+    size_preferences = Column(JSON) # category -> size
+    budget_level = Column(String(50))
+    lifestyle = Column(String(100))
+    seasonal_preferences = Column(JSON)
+    fashion_goals = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class WardrobeItem(Base):
+    __tablename__ = "wardrobe_items"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    name = Column(String(255), nullable=False)
+    category = Column(String(100))
+    color = Column(String(50))
+    brand = Column(String(100))
+    purchase_date = Column(DateTime(timezone=True), server_default=func.now())
+    times_worn = Column(Integer, default=0)
+    condition = Column(String(50), default="excellent")
+    style_tags = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

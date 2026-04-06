@@ -191,6 +191,23 @@ async def create_order_endpoint(
         
         db.commit()
         db.refresh(db_order)
+
+        # DIGITAL WARDROBE INTEGRATION:
+        # Automatically add purchased items to user's virtual wardrobe
+        from ai_consultant import AIConsultantService
+        consultant_service = AIConsultantService()
+        for item_data in order_items_data:
+            product = get_product(db, item_data["product_id"])
+            if product:
+                # We use a background task in a real app, but for now direct call
+                await consultant_service.add_wardrobe_item(
+                    user_id=current_user.id,
+                    name=product.name,
+                    category=product.category or "unspecified",
+                    color=item_data.get("color") or "original",
+                    brand=product.brand.name if product.brand else "Unknown",
+                    style_tags=[product.category] if product.category else []
+                )
         
         # Get order items for response
         order_items = db.query(OrderItem).filter(OrderItem.order_id == db_order.id).all()

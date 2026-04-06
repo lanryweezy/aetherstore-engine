@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import uuid
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import UserStyleProfile as DBStyleProfile, WardrobeItem as DBWardrobeItem
 
 class FashionConsultantType(Enum):
     STYLE_ADVISOR = "style_advisor"
@@ -78,8 +81,8 @@ class WardrobeItem:
     condition: str  # excellent, good, fair, poor
     style_tags: List[str]
 
-class AIConsultantManager:
-    """Manages AI fashion consulting services"""
+class AIConsultantService:
+    """Main service for AI Fashion Consultant features"""
     
     def __init__(self):
         self.user_profiles = {}  # user_id -> UserStyleProfile
@@ -122,51 +125,83 @@ class AIConsultantManager:
                            color_preferences: List[str], size_preferences: Dict[str, str],
                            budget_level: str, lifestyle: str, 
                            seasonal_preferences: List[str], fashion_goals: List[str]) -> UserStyleProfile:
-        """Create a user's style profile"""
-        profile = UserStyleProfile(
-            user_id=user_id,
-            body_type=body_type,
-            height=height,
-            age=age,
-            style_preferences=style_preferences,
-            color_preferences=color_preferences,
-            size_preferences=size_preferences,
-            budget_level=budget_level,
-            lifestyle=lifestyle,
-            seasonal_preferences=seasonal_preferences,
-            fashion_goals=fashion_goals
-        )
-        
-        self.user_profiles[user_id] = profile
-        self.recommendations_history[user_id] = []
-        
-        print(f"Created style profile for user: {user_id}")
-        return profile
+        """Create a user's style profile and persist to DB"""
+        db = SessionLocal()
+        try:
+            # Check for existing profile
+            existing = db.query(DBStyleProfile).filter(DBStyleProfile.user_id == user_id).first()
+
+            profile_data = {
+                "user_id": user_id,
+                "body_type": body_type.value,
+                "height": height,
+                "age": age,
+                "style_preferences": [p.value for p in style_preferences],
+                "color_preferences": color_preferences,
+                "size_preferences": size_preferences,
+                "budget_level": budget_level,
+                "lifestyle": lifestyle,
+                "seasonal_preferences": seasonal_preferences,
+                "fashion_goals": fashion_goals
+            }
+
+            if existing:
+                for key, value in profile_data.items():
+                    setattr(existing, key, value)
+            else:
+                db_profile = DBStyleProfile(**profile_data)
+                db.add(db_profile)
+
+            db.commit()
+
+            # Sync cache
+            profile = UserStyleProfile(
+                user_id=user_id, body_type=body_type, height=height, age=age,
+                style_preferences=style_preferences, color_preferences=color_preferences,
+                size_preferences=size_preferences, budget_level=budget_level,
+                lifestyle=lifestyle, seasonal_preferences=seasonal_preferences,
+                fashion_goals=fashion_goals
+            )
+            self.user_profiles[user_id] = profile
+            return profile
+        finally:
+            db.close()
     
     def add_wardrobe_item(self, user_id: str, name: str, category: str, color: str, 
                          brand: str, style_tags: List[str]) -> WardrobeItem:
-        """Add an item to user's wardrobe"""
-        item_id = f"item_{uuid.uuid4().hex[:12]}"
-        
-        wardrobe_item = WardrobeItem(
-            item_id=item_id,
-            name=name,
-            category=category,
-            color=color,
-            brand=brand,
-            purchase_date=datetime.now().isoformat(),
-            times_worn=0,
-            condition="excellent",
-            style_tags=style_tags
-        )
-        
-        if user_id not in self.wardrobe_items:
-            self.wardrobe_items[user_id] = []
-        
-        self.wardrobe_items[user_id].append(wardrobe_item)
-        
-        print(f"Added {category} '{name}' to {user_id}'s wardrobe")
-        return wardrobe_item
+        """Add an item to user's wardrobe and persist to DB"""
+        db = SessionLocal()
+        try:
+            db_item = DBWardrobeItem(
+                user_id=user_id,
+                name=name,
+                category=category,
+                color=color,
+                brand=brand,
+                style_tags=style_tags
+            )
+            db.add(db_item)
+            db.commit()
+            db.refresh(db_item)
+
+            wardrobe_item = WardrobeItem(
+                item_id=str(db_item.id),
+                name=name,
+                category=category,
+                color=color,
+                brand=brand,
+                purchase_date=db_item.purchase_date.isoformat(),
+                times_worn=0,
+                condition="excellent",
+                style_tags=style_tags
+            )
+
+            if user_id not in self.wardrobe_items:
+                self.wardrobe_items[user_id] = []
+            self.wardrobe_items[user_id].append(wardrobe_item)
+            return wardrobe_item
+        finally:
+            db.close()
     
     def analyze_wardrobe(self, user_id: str) -> Dict:
         """Analyze user's wardrobe and provide insights"""
@@ -362,11 +397,11 @@ class AIConsultantManager:
                     item.times_worn += 1
                     break
 
-class AIConsultantService:
-    """Main service for AI Fashion Consultant features"""
+class AIConsultantManager:
+    """Main service shim for backwards compatibility"""
     
     def __init__(self):
-        self.ai_manager = AIConsultantManager()
+        self.ai_manager = AIConsultantService()
         print("AI Fashion Consultant Service initialized")
     
     async def create_user_style_profile(self, user_id: str, body_type: str, height: float, 

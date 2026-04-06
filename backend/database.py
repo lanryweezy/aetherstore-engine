@@ -74,7 +74,8 @@ def init_db():
         from models import (
             User, Brand, Store, Product, ProductImage, UserAvatar, TryOnSession,
             ShoppingCart, CartItem, Order, OrderItem, StoreAnalytics, ProductAnalytics,
-            AIModelPerformance, Asset, BrandTemplate, Friendship, SocialEvent, GroupSession, InventoryLog
+            AIModelPerformance, Asset, BrandTemplate, Friendship, SocialEvent, GroupSession, InventoryLog,
+            UserStyleProfile, WardrobeItem
         )
         
         # Create all tables

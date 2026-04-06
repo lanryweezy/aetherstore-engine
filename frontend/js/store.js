@@ -97,6 +97,15 @@ class StoreManager {
                 // Check if it's a product or try-on mirror
                 if (intersectedEl.classList.contains('product')) {
                     const productId = intersectedEl.getAttribute('data-product-id');
+
+                    // Track 3D intersection coordinates for Heatmap
+                    const intersection = e.detail.intersection;
+                    if (intersection) {
+                        const coords = intersection.point;
+                        console.log('3D Click at:', coords);
+                        // In a real app, this would be a fetch() call to track the event
+                    }
+
                     window.aetherstoreEngine.handleProductClick(productId);
                 } 
                 else if (intersectedEl.getAttribute('data-action') === 'tryon') {
