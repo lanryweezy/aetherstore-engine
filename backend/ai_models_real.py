@@ -458,36 +458,53 @@ class RealFitPredictionModel:
             return self._predict_rule_based(user_measurements, size_chart)
     
     def _predict_rule_based(self, user_measurements: Dict, size_chart: Dict) -> Dict[str, Any]:
-        """Rule-based fit prediction (fallback)"""
+        """Weighted rule-based fit prediction (fallback)"""
+        # Critical measurements for different garment types
+        # Higher weight = more important for fit
+        weights = {
+            "shoulder_width": 1.5,
+            "chest": 1.2,
+            "waist": 1.0,
+            "hips": 1.2,
+            "height": 0.5,
+            "arm_length": 0.8,
+            "inseam": 0.8
+        }
+
         best_size = None
         best_score = 0
         size_scores = {}
         
         for size, measurements in size_chart.items():
-            score = 0
-            matches = 0
+            weighted_score = 0
+            total_weight = 0
             
             for key, user_val in user_measurements.items():
                 if key in measurements:
                     product_val = measurements[key]
+                    weight = weights.get(key, 1.0)
+
                     diff = abs(user_val - product_val)
-                    # Score based on how close measurements are
-                    match_score = max(0, 1 - (diff / user_val))
-                    score += match_score
-                    matches += 1
+                    # Calculate tolerance (e.g., 2cm is acceptable, 5cm is poor)
+                    tolerance = user_val * 0.05
+                    match_score = max(0, 1 - (diff / (tolerance * 5)))
+
+                    weighted_score += (match_score * weight)
+                    total_weight += weight
             
-            if matches > 0:
-                score = score / matches
-                size_scores[size] = score
+            if total_weight > 0:
+                final_score = weighted_score / total_weight
+                size_scores[size] = round(final_score, 3)
                 
-                if score > best_score:
-                    best_score = score
+                if final_score > best_score:
+                    best_score = final_score
                     best_size = size
         
         return {
             "recommended_size": best_size or "M",
-            "confidence": best_score,
-            "size_scores": size_scores
+            "confidence": round(best_score, 2),
+            "size_scores": size_scores,
+            "analysis": "Used weighted importance: Shoulder > Chest > Waist"
         }
 
 class RealStyleRecommendationModel:

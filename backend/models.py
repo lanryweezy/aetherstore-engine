@@ -287,3 +287,45 @@ class BrandTemplate(Base):
     is_public = Column(Boolean, default=False)
     created_by = Column(UUID(as_uuid=False), ForeignKey("users.id"))
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    friend_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    status = Column(String(50), default="accepted") # accepted, pending, blocked
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class SocialEvent(Base):
+    __tablename__ = "social_events"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    target_user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    event_type = Column(String(50), nullable=False)
+    data = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class GroupSession(Base):
+    __tablename__ = "group_sessions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    creator_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="CASCADE"))
+    status = Column(String(50), default="planned") # planned, active, completed
+    settings = Column(JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    ended_at = Column(DateTime(timezone=True))
+
+class InventoryLog(Base):
+    __tablename__ = "inventory_logs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    change_amount = Column(Integer, nullable=False)
+    reason = Column(String(255)) # purchase, restock, return, adjustment
+    remaining_stock = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

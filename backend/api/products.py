@@ -13,6 +13,7 @@ from crud import get_product, get_products_by_brand, get_products_by_store, crea
 from crud import get_brand, get_store
 from auth import get_current_active_user
 from database import get_db_session
+from models import InventoryLog
 
 router = APIRouter()
 
@@ -291,9 +292,67 @@ async def get_product_images(product_id: str, current_user = Depends(get_current
             raise HTTPException(status_code=404, detail="Product not found")
         
         # Get product images
-        images = db.query(ProductImage).filter(ProductImage.product_id == product_id).all()
+        images = db.query(DBProductImage).filter(DBProductImage.product_id == product_id).all()
         return images
     except HTTPException:
         raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Error retrieving product images: {str(e)}")
+
+# Merchant Inventory Management
+class StockUpdate(BaseModel):
+    product_id: str
+    change_amount: int
+    reason: str  # restock, manual_adjustment, damage
+
+class BulkStockUpdate(BaseModel):
+    updates: List[StockUpdate]
+
+@router.post("/inventory/bulk-update")
+async def bulk_update_inventory(
+    data: BulkStockUpdate,
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db_session)
+):
+    """Bulk update stock levels for multiple products"""
+    results = []
+    for update in data.updates:
+        product = get_product(db, update.product_id)
+        if not product:
+            results.append({"product_id": update.product_id, "status": "not_found"})
+            continue
+
+        product.stock_quantity += update.change_amount
+
+        # Log the change
+        log = InventoryLog(
+            product_id=product.id,
+            change_amount=update.change_amount,
+            reason=update.reason,
+            remaining_stock=product.stock_quantity
+        )
+        db.add(log)
+        results.append({"product_id": update.product_id, "status": "updated", "new_stock": product.stock_quantity})
+
+    db.commit()
+    return {"results": results}
+
+@router.get("/inventory/low-stock")
+async def get_low_stock_alerts(
+    threshold: int = 5,
+    brand_id: Optional[str] = None,
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db_session)
+):
+    """Identify products with stock levels below the threshold"""
+    query = db.query(DBProduct).filter(DBProduct.stock_quantity <= threshold)
+    if brand_id:
+        query = query.filter(DBProduct.brand_id == brand_id)
+
+    low_stock_items = query.all()
+    return [{
+        "id": item.id,
+        "name": item.name,
+        "stock": item.stock_quantity,
+        "brand_id": item.brand_id
+    } for item in low_stock_items]

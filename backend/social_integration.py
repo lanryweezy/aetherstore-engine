@@ -10,6 +10,9 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 from enum import Enum
 import uuid
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import Friendship, SocialEvent as DBSocialEvent, GroupSession
 
 class SocialEventType(Enum):
     FRIEND_ADDED = "friend_added"
@@ -67,10 +70,11 @@ class SocialManager:
     """Manages social features for Aetherstore"""
     
     def __init__(self):
-        self.friends_list = {}  # user_id -> [friend_ids]
-        self.group_sessions = {}  # session_id -> GroupShoppingSession
-        self.social_events = []  # List of SocialEvent
-        self.active_chats = {}  # user_id -> [other_user_ids]
+        # In-memory caches for fast retrieval (synced from DB on startup)
+        self.friends_list = {}
+        self.group_sessions = {}
+        self.social_events = []
+        self.active_chats = {}
         self.room_messages = {}  # room_id -> [messages]
         self.style_recommendations = {}  # user_id -> [recommendations]
         self.live_shopping_rooms = {}  # room_id -> room_data
@@ -79,26 +83,38 @@ class SocialManager:
         print("Social Manager initialized")
     
     def add_friend(self, user_id: str, friend_id: str) -> bool:
-        """Add a friend to user's friend list"""
-        if user_id not in self.friends_list:
-            self.friends_list[user_id] = []
-        
-        if friend_id not in self.friends_list[user_id]:
-            self.friends_list[user_id].append(friend_id)
-            print(f"Added {friend_id} as friend of {user_id}")
+        """Add a friend to user's friend list and persist to DB"""
+        db = SessionLocal()
+        try:
+            # Check if friendship already exists
+            existing = db.query(Friendship).filter(
+                Friendship.user_id == user_id,
+                Friendship.friend_id == friend_id
+            ).first()
             
-            # Create social event
-            event = SocialEvent(
-                event_id=f"event_{uuid.uuid4().hex[:12]}",
-                event_type=SocialEventType.FRIEND_ADDED,
-                user_id=user_id,
-                target_user_id=friend_id,
-                timestamp=datetime.now().isoformat(),
-                data={"initiator": user_id}
-            )
-            self.social_events.append(event)
-            return True
-        
+            if not existing:
+                new_friendship = Friendship(user_id=user_id, friend_id=friend_id)
+                db.add(new_friendship)
+
+                # Log event
+                new_event = DBSocialEvent(
+                    user_id=user_id,
+                    target_user_id=friend_id,
+                    event_type=SocialEventType.FRIEND_ADDED.value,
+                    data={"initiator": user_id}
+                )
+                db.add(new_event)
+                db.commit()
+
+                # Update cache
+                if user_id not in self.friends_list: self.friends_list[user_id] = []
+                self.friends_list[user_id].append(friend_id)
+                return True
+        except Exception as e:
+            print(f"Error adding friend: {e}")
+            db.rollback()
+        finally:
+            db.close()
         return False
     
     def get_friends(self, user_id: str) -> List[str]:
@@ -107,37 +123,48 @@ class SocialManager:
     
     def create_group_shopping_session(self, name: str, creator_id: str, 
                                     members: List[str], store_id: str) -> GroupShoppingSession:
-        """Create a new group shopping session"""
-        session_id = f"session_{uuid.uuid4().hex[:12]}"
-        
-        session = GroupShoppingSession(
-            session_id=session_id,
-            name=name,
-            creator_id=creator_id,
-            members=members,
-            created_at=datetime.now().isoformat(),
-            status=GroupShoppingStatus.PLANNED,
-            store_id=store_id,
-            start_time=datetime.now().isoformat(),
-            end_time=None,
-            active_users=[]
-        )
-        
-        self.group_sessions[session_id] = session
-        print(f"Created group shopping session: {session_id}")
-        
-        # Create social event
-        event = SocialEvent(
-            event_id=f"event_{uuid.uuid4().hex[:12]}",
-            event_type=SocialEventType.GROUP_INVITE,
-            user_id=creator_id,
-            timestamp=session.created_at,
-            data={"session_id": session_id, "members": members},
-            target_user_id=members[0] if members else None
-        )
-        self.social_events.append(event)
-        
-        return session
+        """Create a new group shopping session and persist to DB"""
+        db = SessionLocal()
+        try:
+            new_session = GroupSession(
+                name=name,
+                creator_id=creator_id,
+                store_id=store_id,
+                status=GroupShoppingStatus.PLANNED.value,
+                settings={"members": members}
+            )
+            db.add(new_session)
+
+            # Log event
+            new_event = DBSocialEvent(
+                user_id=creator_id,
+                event_type=SocialEventType.GROUP_INVITE.value,
+                data={"session_id": str(new_session.id), "members": members}
+            )
+            db.add(new_event)
+            db.commit()
+
+            # Create session object for return (bridging models)
+            session = GroupShoppingSession(
+                session_id=str(new_session.id),
+                name=name,
+                creator_id=creator_id,
+                members=members,
+                created_at=datetime.now().isoformat(),
+                status=GroupShoppingStatus.PLANNED,
+                store_id=store_id,
+                start_time=datetime.now().isoformat(),
+                end_time=None,
+                active_users=[]
+            )
+            self.group_sessions[session.session_id] = session
+            return session
+        except Exception as e:
+            print(f"Error creating session: {e}")
+            db.rollback()
+            raise
+        finally:
+            db.close()
     
     def start_group_session(self, session_id: str) -> bool:
         """Start a group shopping session"""

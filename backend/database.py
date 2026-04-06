@@ -71,9 +71,11 @@ def init_db():
     """Initialize database tables"""
     try:
         # Import all models here to ensure they are registered
-        from models import User, Brand, Store, Product, ProductImage, UserAvatar, TryOnSession
-        from models import ShoppingCart, CartItem, Order, OrderItem, StoreAnalytics, ProductAnalytics
-        from models import AIModelPerformance, Asset, BrandTemplate
+        from models import (
+            User, Brand, Store, Product, ProductImage, UserAvatar, TryOnSession,
+            ShoppingCart, CartItem, Order, OrderItem, StoreAnalytics, ProductAnalytics,
+            AIModelPerformance, Asset, BrandTemplate, Friendship, SocialEvent, GroupSession, InventoryLog
+        )
         
         # Create all tables
         Base.metadata.create_all(bind=engine)
