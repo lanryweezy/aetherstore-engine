@@ -388,3 +388,36 @@ class UserActivity(Base):
     store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
     metadata_json = Column(JSON, default={})
     timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class UserLoyalty(Base):
+    __tablename__ = "user_loyalty"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"), nullable=True) # If multi-brand, null means global
+    points_balance = Column(Integer, default=0)
+    tier = Column(String(50), default="bronze") # bronze, silver, gold, platinum
+    total_earned = Column(Integer, default=0)
+    last_activity = Column(DateTime(timezone=True), server_default=func.now())
+
+class LoyaltyTransaction(Base):
+    __tablename__ = "loyalty_transactions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    amount = Column(Integer, nullable=False) # Positive for earn, negative for redeem
+    reason = Column(String(255)) # purchase, review, referral, social_share
+    metadata_json = Column(JSON, default={})
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ProductReview(Base):
+    __tablename__ = "product_reviews"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    rating = Column(Integer, nullable=False) # 1-5
+    comment = Column(Text)
+    is_verified_purchase = Column(Boolean, default=False)
+    helpful_count = Column(Integer, default=0)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

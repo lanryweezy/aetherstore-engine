@@ -7,7 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 import os
-from sqlalchemy import String
+from sqlalchemy import String, func
 from sqlalchemy.orm import Session
 from models import Product, ProductImage, Brand, Store, InventoryLog
 from crud import get_product, get_products_by_brand, get_products_by_store, create_product, update_product, delete_product
@@ -318,3 +318,62 @@ async def search_products_advanced(
         query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
 
     return query.all()
+
+# Social Proof & Reviews System
+from models import ProductReview
+class ReviewCreate(BaseModel):
+    product_id: str
+    rating: int
+    comment: Optional[str] = None
+
+class ReviewResponse(BaseModel):
+    id: str
+    user_id: str
+    product_id: str
+    rating: int
+    comment: Optional[str] = None
+    is_verified_purchase: bool
+    helpful_count: int
+    created_at: datetime
+
+    class Config:
+        from_attributes = True
+
+@router.post("/{product_id}/reviews", response_model=ReviewResponse)
+async def create_review(product_id: str, review_in: ReviewCreate, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    # Check if user already reviewed
+    existing = db.query(ProductReview).filter(ProductReview.user_id == current_user.id, ProductReview.product_id == product_id).first()
+    if existing:
+        raise HTTPException(status_code=400, detail="You have already reviewed this product")
+
+    # Verify if user actually purchased it (Mock check)
+    from models import Order, OrderItem
+    has_purchased = db.query(OrderItem).join(Order).filter(
+        Order.user_id == current_user.id,
+        OrderItem.product_id == product_id,
+        Order.status == "completed"
+    ).first() is not None
+
+    new_review = ProductReview(
+        user_id=current_user.id,
+        product_id=product_id,
+        rating=review_in.rating,
+        comment=review_in.comment,
+        is_verified_purchase=has_purchased
+    )
+    db.add(new_review)
+    db.commit()
+    db.refresh(new_review)
+    return new_review
+
+@router.get("/{product_id}/reviews", response_model=List[ReviewResponse])
+async def list_product_reviews(product_id: str, db: Session = Depends(get_db)):
+    return db.query(ProductReview).filter(ProductReview.product_id == product_id).all()
+
+@router.get("/{product_id}/rating")
+async def get_product_rating(product_id: str, db: Session = Depends(get_db)):
+    stats = db.query(
+        func.avg(ProductReview.rating).label('average'),
+        func.count(ProductReview.id).label('count')
+    ).filter(ProductReview.product_id == product_id).first()
+    return {"average_rating": float(stats.average) if stats.average else 0, "review_count": stats.count}

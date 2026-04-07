@@ -45,7 +45,10 @@ class BabylonEngine {
         // 3. Initialize Physics (For Cloth Simulation)
         this.enablePhysics();
 
-        // 4. Start Render Loop
+        // 4. Initialize WebXR (VR/AR Readiness)
+        this.initXR();
+
+        // 5. Start Render Loop
         this.engine.runRenderLoop(() => {
             this.scene.render();
         });
@@ -68,6 +71,43 @@ class BabylonEngine {
         } catch (error) {
             console.warn('Physics initialization failed, falling back to static rendering:', error);
         }
+    }
+
+    /**
+     * Initialize WebXR Experience
+     */
+    async initXR() {
+        try {
+            this.xrHelper = await this.scene.createDefaultXRExperienceAsync({
+                floorMeshes: [] # To be populated by store environment
+            });
+            console.log('Babylon.js WebXR Initialized');
+        } catch (e) {
+            console.warn('WebXR not supported in this environment:', e);
+        }
+    }
+
+    /**
+     * Attach a physics impostor to a mesh for collisions/gravity
+     */
+    attachPhysicsImpostor(mesh, type = 'box', mass = 0) {
+        if (!this.physicsEnabled) return;
+
+        let impostorType;
+        switch(type) {
+            case 'sphere': impostorType = BABYLON.PhysicsImpostor.SphereImpostor; break;
+            case 'capsule': impostorType = BABYLON.PhysicsImpostor.CapsuleImpostor; break;
+            case 'box':
+            default: impostorType = BABYLON.PhysicsImpostor.BoxImpostor; break;
+        }
+
+        mesh.physicsImpostor = new BABYLON.PhysicsImpostor(
+            mesh,
+            impostorType,
+            { mass: mass, restitution: 0.2 },
+            this.scene
+        );
+        console.log(`Attached ${type} physics impostor to mesh: ${mesh.name}`);
     }
 
     async loadAvatar(modelUrl, measurements = null) {

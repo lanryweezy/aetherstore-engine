@@ -512,6 +512,58 @@ class AnalyticsEngine:
             "total_interactions": len(store_events)
         }
 
+    def get_conversion_funnel(self, store_id: str = None, product_id: str = None) -> Dict:
+        """Calculate the conversion funnel using UserActivity data from DB"""
+        db = SessionLocal()
+        try:
+            from models import UserActivity
+            query = db.query(UserActivity)
+            if store_id:
+                query = query.filter(UserActivity.store_id == store_id)
+            if product_id:
+                query = query.filter(UserActivity.product_id == product_id)
+
+            activities = query.all()
+
+            counts = {
+                "visit_store": 0,
+                "view_product": 0,
+                "try_on": 0,
+                "add_to_cart": 0,
+                "purchase": 0
+            }
+
+            for a in activities:
+                if a.activity_type in counts:
+                    counts[a.activity_type] += 1
+
+            # Calculate drops
+            funnel = []
+            steps = ["visit_store", "view_product", "try_on", "add_to_cart", "purchase"]
+            prev_val = None
+
+            for step in steps:
+                val = counts[step]
+                pct_of_total = (val / counts[steps[0]] * 100) if counts[steps[0]] > 0 else 0
+                pct_of_prev = (val / prev_val * 100) if prev_val and prev_val > 0 else 100
+
+                funnel.append({
+                    "step": step,
+                    "count": val,
+                    "percentage_of_total": round(pct_of_total, 2),
+                    "percentage_of_previous": round(pct_of_prev, 2)
+                })
+                prev_val = val
+
+            return {
+                "store_id": store_id,
+                "product_id": product_id,
+                "funnel": funnel,
+                "total_conversions": counts["purchase"]
+            }
+        finally:
+            db.close()
+
 # Example usage and testing
 class AnalyticsService:
     """Main service class that manages the analytics engine"""
