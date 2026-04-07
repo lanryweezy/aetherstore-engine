@@ -61,7 +61,7 @@ class FashionRecommendation:
     recommendation_id: str
     user_id: str
     product_ids: List[str]
-    category: str  # outfit,单品, accessory
+    category: str  # outfit, single item, accessory
     occasion: str  # work, party, casual, etc.
     confidence_score: float
     reason: str
@@ -120,12 +120,31 @@ class AIConsultantService:
             }
         }
     
-    async def create_user_profile(self, user_id: str, body_type: BodyType, height: float,
-                           age: int, style_preferences: List[StylePreference], 
+    async def create_user_profile(self, user_id: str, body_type: any, height: float,
+                           age: int, style_preferences: List[any],
                            color_preferences: List[str], size_preferences: Dict[str, str],
                            budget_level: str, lifestyle: str, 
                            seasonal_preferences: List[str], fashion_goals: List[str]) -> UserStyleProfile:
         """Create a user's style profile and persist to DB"""
+
+        # Handle string input for enums if passed as strings (common via API)
+        if isinstance(body_type, str):
+            try:
+                body_type = BodyType(body_type)
+            except ValueError:
+                pass # Keep as string or handle error
+
+        style_prefs_enum = []
+        for p in style_preferences:
+            if isinstance(p, str):
+                try:
+                    style_prefs_enum.append(StylePreference(p))
+                except ValueError:
+                    style_prefs_enum.append(p)
+            else:
+                style_prefs_enum.append(p)
+        style_preferences = style_prefs_enum
+
         db = SessionLocal()
         try:
             # Check for existing profile
@@ -133,10 +152,10 @@ class AIConsultantService:
 
             profile_data = {
                 "user_id": user_id,
-                "body_type": body_type.value,
+                "body_type": body_type.value if hasattr(body_type, 'value') else body_type,
                 "height": height,
                 "age": age,
-                "style_preferences": [p.value for p in style_preferences],
+                "style_preferences": [p.value if hasattr(p, 'value') else p for p in style_preferences],
                 "color_preferences": color_preferences,
                 "size_preferences": size_preferences,
                 "budget_level": budget_level,
@@ -457,6 +476,41 @@ class AIConsultantService:
         finally:
             db.close()
 
+    async def get_conversational_advice(self, user_id: str, message: str) -> Dict:
+        """Simulate a context-aware LLM fashion consultant"""
+        db = SessionLocal()
+        try:
+            # 1. Fetch context (User Profile and Wardrobe)
+            profile = db.query(DBStyleProfile).filter(DBStyleProfile.user_id == user_id).first()
+            wardrobe_count = db.query(DBWardrobeItem).filter(DBWardrobeItem.user_id == user_id).count()
+
+            # 2. Logic to generate context-aware response
+            user_style = profile.style_preferences[0] if profile and profile.style_preferences else "casual"
+
+            response = ""
+            msg_lower = message.lower()
+
+            if "wear" in msg_lower or "outfit" in msg_lower:
+                response = f"Based on your {user_style} style, I'd suggest pairing a crisp white shirt with those trousers from your digital wardrobe."
+            elif "fit" in msg_lower:
+                response = "You should prioritize items with a structured shoulder based on your proportions for the best silhouette."
+            elif "trend" in msg_lower:
+                response = "Earth tones and oversized blazers are huge this season, and they'd complement your style perfectly!"
+            else:
+                response = f"I'm here to help you build your perfect look. You currently have {wardrobe_count} items in your digital wardrobe to work with!"
+
+            return {
+                "success": True,
+                "user_id": user_id,
+                "response": response,
+                "context_used": {
+                    "has_profile": profile is not None,
+                    "wardrobe_items": wardrobe_count
+                }
+            }
+        finally:
+            db.close()
+
 class AIConsultantManager:
     """Main service shim for backwards compatibility"""
     
@@ -511,6 +565,9 @@ class AIConsultantManager:
     async def get_style_boards(self, *args, **kwargs):
         return await self.service.get_style_boards(*args, **kwargs)
 
+    async def get_conversational_advice(self, *args, **kwargs):
+        return await self.service.get_conversational_advice(*args, **kwargs)
+
 # Global instance
 ai_consultant_service = AIConsultantService()
 
@@ -526,12 +583,20 @@ async def create_board_endpoint(user_id: str, board_data: dict):
 async def list_boards_endpoint(user_id: str):
     return await ai_consultant_service.get_style_boards(user_id)
 
+async def consultant_chat_endpoint(user_id: str, chat_data: dict):
+    return await ai_consultant_service.get_conversational_advice(user_id, chat_data.get("message", ""))
+
 async def main():
+    import uuid
+    from database import init_db
+    init_db()
     ai_service = AIConsultantManager()
+
+    user_id = str(uuid.uuid4())
 
     # Create a user profile
     profile_result = await ai_service.create_user_style_profile(
-        "user_123",
+        user_id,
         "hourglass",
         170.0,
         28,
@@ -545,12 +610,12 @@ async def main():
     )
 
     print("User Profile Creation Result:")
-    print(json.dumps(profile_result, indent=2))
+    print(profile_result)
 
-    if profile_result["success"]:
+    if profile_result:
         # Add items to wardrobe
         item_result = await ai_service.add_wardrobe_item(
-            "user_123",
+            user_id,
             "Black Blazer",
             "outerwear",
             "black",
@@ -559,13 +624,13 @@ async def main():
         )
 
         print("\nWardrobe Item Addition Result:")
-        print(json.dumps(item_result, indent=2))
+        print(item_result)
 
         # Get outfit recommendation
-        outfit_result = await ai_service.get_outfit_recommendation("user_123", "work")
+        outfit_result = await ai_service.get_outfit_recommendation(user_id, "work")
 
         print("\nOutfit Recommendation:")
-        print(json.dumps(outfit_result, indent=2))
+        print(outfit_result)
 
 if __name__ == "__main__":
     import asyncio

@@ -113,6 +113,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                     "user_id": user_id,
                     "position": data.get("position"),
                     "rotation": data.get("rotation"),
+                    "animation_state": data.get("animation_state"), # Syncing animation state (e.g., 'idle', 'walk', 'run')
                     "timestamp": datetime.now().isoformat()
                 })
     except WebSocketDisconnect:

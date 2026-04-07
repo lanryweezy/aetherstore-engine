@@ -56,6 +56,7 @@ class Store(Base):
     brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"))
     name = Column(String(255), nullable=False)
     template = Column(String(100), default="modern-gallery")
+    lighting_preset = Column(String(100), default="studio") # studio, cinematic, sunlight, neon, warm, minimalist
     description = Column(Text)
     settings = Column(JSON, default={})
     scene_state = Column(JSON, default={}) # 3D Layout: coords and rotations for props
@@ -376,3 +377,14 @@ class StyleBoard(Base):
     is_public = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class UserActivity(Base):
+    __tablename__ = "user_activities"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    activity_type = Column(String(50), nullable=False) # view_product, visit_store, try_on, search
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
+    metadata_json = Column(JSON, default={})
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())

@@ -83,3 +83,29 @@ async def login(request: Request, user_in: UserLogin, db: Session = Depends(get_
         )
     access_token = create_access_token(data={"sub": user.id})
     return {"access_token": access_token, "token_type": "bearer"}
+
+from models import UserActivity
+class ActivityCreate(BaseModel):
+    activity_type: str
+    product_id: Optional[str] = None
+    store_id: Optional[str] = None
+    metadata_json: Optional[dict] = {}
+
+@router.post("/{user_id}/activity")
+async def track_user_activity(user_id: str, activity_in: ActivityCreate, db: Session = Depends(get_db)):
+    new_activity = UserActivity(
+        user_id=user_id,
+        activity_type=activity_in.activity_type,
+        product_id=activity_in.product_id,
+        store_id=activity_in.store_id,
+        metadata_json=activity_in.metadata_json
+    )
+    db.add(new_activity)
+    db.commit()
+    db.refresh(new_activity)
+    return {"success": True, "activity_id": str(new_activity.id)}
+
+@router.get("/{user_id}/recent-activity")
+async def get_recent_activity(user_id: str, limit: int = 10, db: Session = Depends(get_db)):
+    activities = db.query(UserActivity).filter(UserActivity.user_id == user_id).order_by(UserActivity.timestamp.desc()).limit(limit).all()
+    return [{"id": str(a.id), "type": a.activity_type, "product_id": a.product_id, "store_id": a.store_id, "timestamp": a.timestamp} for a in activities]

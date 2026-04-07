@@ -27,15 +27,19 @@ else:
     pool_size = 20
     max_overflow = 30
 
+# Engine arguments
+engine_kwargs = {
+    "connect_args": connect_args,
+    "echo": False,  # Set to True for SQL debugging
+}
+
+if not DATABASE_URL.startswith("sqlite"):
+    engine_kwargs["pool_size"] = pool_size or 5
+    engine_kwargs["max_overflow"] = max_overflow or 10
+    engine_kwargs["pool_pre_ping"] = True
+
 # Create engine
-engine = create_engine(
-    DATABASE_URL,
-    pool_size=pool_size,
-    max_overflow=max_overflow,
-    pool_pre_ping=True if not DATABASE_URL.startswith("sqlite") else False,
-    connect_args=connect_args,
-    echo=False  # Set to True for SQL debugging
-)
+engine = create_engine(DATABASE_URL, **engine_kwargs)
 
 # Create session factory
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
