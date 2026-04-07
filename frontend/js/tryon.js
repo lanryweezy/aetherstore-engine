@@ -275,7 +275,7 @@ class TryOnManager {
         return /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
     }
     
-    confirmTryOn() {
+    async confirmTryOn() {
         // User confirms the try-on and wants to purchase
         if (this.currentSession) {
             console.log('Try-on confirmed for purchase');
@@ -283,6 +283,17 @@ class TryOnManager {
             // Add product to cart
             if (window.aetherstoreEngine && this.currentSession.product) {
                 window.aetherstoreEngine.addToCart(this.currentSession.product);
+            }
+
+            // EQUIPPING SYSTEM:
+            // Persist that the user is now "wearing" this item digitally
+            try {
+                const userId = window.aetherstoreEngine?.user?.id || 'guest';
+                const itemId = this.currentSession.productId;
+                await fetch(`/api/consultant/wardrobe/equip/${userId}/${itemId}`, { method: 'POST' });
+                console.log('Item equipped in digital wardrobe');
+            } catch (err) {
+                console.warn('Could not persist equipment state:', err);
             }
             
             // Close modal

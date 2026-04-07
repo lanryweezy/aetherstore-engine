@@ -10,6 +10,9 @@ from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
 import uuid
+from sqlalchemy.orm import Session
+from database import SessionLocal
+from models import UserStyleProfile as DBStyleProfile, WardrobeItem as DBWardrobeItem, StyleBoard
 
 class FashionConsultantType(Enum):
     STYLE_ADVISOR = "style_advisor"
@@ -58,7 +61,7 @@ class FashionRecommendation:
     recommendation_id: str
     user_id: str
     product_ids: List[str]
-    category: str  # outfit,单品, accessory
+    category: str  # outfit, single item, accessory
     occasion: str  # work, party, casual, etc.
     confidence_score: float
     reason: str
@@ -78,8 +81,8 @@ class WardrobeItem:
     condition: str  # excellent, good, fair, poor
     style_tags: List[str]
 
-class AIConsultantManager:
-    """Manages AI fashion consulting services"""
+class AIConsultantService:
+    """Main service for AI Fashion Consultant features"""
     
     def __init__(self):
         self.user_profiles = {}  # user_id -> UserStyleProfile
@@ -89,7 +92,7 @@ class AIConsultantManager:
         self.fashion_trends = {}  # category -> trends_data
         self.outfit_combinations = {}  # user_id -> [outfit_suggestions]
         
-        print("AI Consultant Manager initialized")
+        print("AI Consultant Service initialized")
         
         # Initialize with some default trends
         self._initialize_trends()
@@ -117,58 +120,109 @@ class AIConsultantManager:
             }
         }
     
-    def create_user_profile(self, user_id: str, body_type: BodyType, height: float, 
-                           age: int, style_preferences: List[StylePreference], 
+    async def create_user_profile(self, user_id: str, body_type: any, height: float,
+                           age: int, style_preferences: List[any],
                            color_preferences: List[str], size_preferences: Dict[str, str],
                            budget_level: str, lifestyle: str, 
                            seasonal_preferences: List[str], fashion_goals: List[str]) -> UserStyleProfile:
-        """Create a user's style profile"""
-        profile = UserStyleProfile(
-            user_id=user_id,
-            body_type=body_type,
-            height=height,
-            age=age,
-            style_preferences=style_preferences,
-            color_preferences=color_preferences,
-            size_preferences=size_preferences,
-            budget_level=budget_level,
-            lifestyle=lifestyle,
-            seasonal_preferences=seasonal_preferences,
-            fashion_goals=fashion_goals
-        )
-        
-        self.user_profiles[user_id] = profile
-        self.recommendations_history[user_id] = []
-        
-        print(f"Created style profile for user: {user_id}")
-        return profile
+        """Create a user's style profile and persist to DB"""
+
+        # Handle string input for enums if passed as strings (common via API)
+        if isinstance(body_type, str):
+            try:
+                body_type = BodyType(body_type)
+            except ValueError:
+                pass # Keep as string or handle error
+
+        style_prefs_enum = []
+        for p in style_preferences:
+            if isinstance(p, str):
+                try:
+                    style_prefs_enum.append(StylePreference(p))
+                except ValueError:
+                    style_prefs_enum.append(p)
+            else:
+                style_prefs_enum.append(p)
+        style_preferences = style_prefs_enum
+
+        db = SessionLocal()
+        try:
+            # Check for existing profile
+            existing = db.query(DBStyleProfile).filter(DBStyleProfile.user_id == user_id).first()
+
+            profile_data = {
+                "user_id": user_id,
+                "body_type": body_type.value if hasattr(body_type, 'value') else body_type,
+                "height": height,
+                "age": age,
+                "style_preferences": [p.value if hasattr(p, 'value') else p for p in style_preferences],
+                "color_preferences": color_preferences,
+                "size_preferences": size_preferences,
+                "budget_level": budget_level,
+                "lifestyle": lifestyle,
+                "seasonal_preferences": seasonal_preferences,
+                "fashion_goals": fashion_goals
+            }
+
+            if existing:
+                for key, value in profile_data.items():
+                    setattr(existing, key, value)
+            else:
+                db_profile = DBStyleProfile(**profile_data)
+                db.add(db_profile)
+
+            db.commit()
+
+            # Sync cache
+            profile = UserStyleProfile(
+                user_id=user_id, body_type=body_type, height=height, age=age,
+                style_preferences=style_preferences, color_preferences=color_preferences,
+                size_preferences=size_preferences, budget_level=budget_level,
+                lifestyle=lifestyle, seasonal_preferences=seasonal_preferences,
+                fashion_goals=fashion_goals
+            )
+            self.user_profiles[user_id] = profile
+            return profile
+        finally:
+            db.close()
     
-    def add_wardrobe_item(self, user_id: str, name: str, category: str, color: str, 
+    async def add_wardrobe_item(self, user_id: str, name: str, category: str, color: str,
                          brand: str, style_tags: List[str]) -> WardrobeItem:
-        """Add an item to user's wardrobe"""
-        item_id = f"item_{uuid.uuid4().hex[:12]}"
-        
-        wardrobe_item = WardrobeItem(
-            item_id=item_id,
-            name=name,
-            category=category,
-            color=color,
-            brand=brand,
-            purchase_date=datetime.now().isoformat(),
-            times_worn=0,
-            condition="excellent",
-            style_tags=style_tags
-        )
-        
-        if user_id not in self.wardrobe_items:
-            self.wardrobe_items[user_id] = []
-        
-        self.wardrobe_items[user_id].append(wardrobe_item)
-        
-        print(f"Added {category} '{name}' to {user_id}'s wardrobe")
-        return wardrobe_item
+        """Add an item to user's wardrobe and persist to DB"""
+        db = SessionLocal()
+        try:
+            db_item = DBWardrobeItem(
+                user_id=user_id,
+                name=name,
+                category=category,
+                color=color,
+                brand=brand,
+                style_tags=style_tags
+            )
+            db.add(db_item)
+            db.commit()
+            db.refresh(db_item)
+
+            wardrobe_item = WardrobeItem(
+                item_id=str(db_item.id),
+                name=name,
+                category=category,
+                color=color,
+                brand=brand,
+                purchase_date=db_item.purchase_date.isoformat() if hasattr(db_item.purchase_date, 'isoformat') else str(db_item.purchase_date),
+                times_worn=0,
+                condition="excellent",
+                style_tags=style_tags
+            )
+
+            if user_id not in self.wardrobe_items:
+                self.wardrobe_items[user_id] = []
+            self.wardrobe_items[user_id].append(wardrobe_item)
+            return wardrobe_item
+        finally:
+            db.close()
     
-    def analyze_wardrobe(self, user_id: str) -> Dict:
+    async def analyze_wardrobe(self, user_id: str) -> Dict:
         """Analyze user's wardrobe and provide insights"""
         if user_id not in self.wardrobe_items:
             return {"message": "No wardrobe items found", "user_id": user_id}
@@ -203,7 +257,7 @@ class AIConsultantManager:
         
         return insights
     
-    def generate_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> FashionRecommendation:
+    async def generate_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> FashionRecommendation:
         """Generate an outfit recommendation for the user"""
         recommendation_id = f"rec_{uuid.uuid4().hex[:12]}"
         
@@ -251,7 +305,7 @@ class AIConsultantManager:
         print(f"Generated outfit recommendation for {user_id} for {occasion} occasion")
         return recommendation
     
-    def get_personal_styling_advice(self, user_id: str, body_type: BodyType) -> List[str]:
+    async def get_personal_styling_advice(self, user_id: str, body_type: BodyType) -> List[str]:
         """Provide styling advice based on body type"""
         advice_map = {
             BodyType.HOURGLASS: [
@@ -288,7 +342,7 @@ class AIConsultantManager:
         
         return advice_map.get(body_type, ["General styling advice based on your shape"])
     
-    def suggest_wardrobe_additions(self, user_id: str) -> List[Dict]:
+    async def suggest_wardrobe_additions(self, user_id: str) -> List[Dict]:
         """Suggest items to add to user's wardrobe"""
         suggestions = []
         
@@ -332,7 +386,7 @@ class AIConsultantManager:
         
         return suggestions
     
-    def start_consultation_session(self, user_id: str, consultant_type: FashionConsultantType) -> str:
+    async def start_consultation_session(self, user_id: str, consultant_type: FashionConsultantType) -> str:
         """Start a fashion consultation session"""
         session_id = f"session_{uuid.uuid4().hex[:12]}"
         
@@ -350,11 +404,11 @@ class AIConsultantManager:
         
         return session_id
     
-    def get_fashion_trends(self, category: str) -> Dict:
+    async def get_fashion_trends(self, category: str) -> Dict:
         """Get current fashion trends for a category"""
         return self.fashion_trends.get(category, {})
     
-    def update_wardrobe_item_usage(self, user_id: str, item_id: str):
+    async def update_wardrobe_item_usage(self, user_id: str, item_id: str):
         """Update how often an item has been worn"""
         if user_id in self.wardrobe_items:
             for item in self.wardrobe_items[user_id]:
@@ -362,186 +416,187 @@ class AIConsultantManager:
                     item.times_worn += 1
                     break
 
-class AIConsultantService:
-    """Main service for AI Fashion Consultant features"""
+    async def equip_wardrobe_item(self, user_id: str, item_id: str, equip: bool = True) -> Dict:
+        """Equip or unequip an item for the 3D avatar"""
+        db = SessionLocal()
+        try:
+            # 1. Find the item
+            item = db.query(DBWardrobeItem).filter(DBWardrobeItem.id == item_id, DBWardrobeItem.user_id == user_id).first()
+            if not item:
+                return {"success": False, "message": "Item not found"}
+
+            if equip:
+                # Unequip others in same category
+                db.query(DBWardrobeItem).filter(
+                    DBWardrobeItem.user_id == user_id,
+                    DBWardrobeItem.category == item.category
+                ).update({"is_equipped": False})
+            
+            item.is_equipped = equip
+            db.commit()
+            return {"success": True, "item_id": item_id, "is_equipped": equip}
+        finally:
+            db.close()
+
+    async def get_equipped_items(self, user_id: str) -> List[Dict]:
+        """Get all items currently worn by the user's avatar"""
+        db = SessionLocal()
+        try:
+            items = db.query(DBWardrobeItem).filter(
+                DBWardrobeItem.user_id == user_id,
+                DBWardrobeItem.is_equipped == True
+            ).all()
+            return [{"id": str(i.id), "name": i.name, "category": i.category} for i in items]
+        finally:
+            db.close()
+
+    async def create_style_board(self, user_id: str, name: str, item_ids: List[str], description: str = "") -> Dict:
+        """Create a new curated collection of fashion items"""
+        db = SessionLocal()
+        try:
+            new_board = StyleBoard(
+                user_id=user_id,
+                name=name,
+                description=description,
+                item_ids=item_ids
+            )
+            db.add(new_board)
+            db.commit()
+            db.refresh(new_board)
+            return {"success": True, "board_id": str(new_board.id), "name": new_board.name}
+        finally:
+            db.close()
+
+    async def get_style_boards(self, user_id: str) -> List[Dict]:
+        """Retrieve all style boards for a user"""
+        db = SessionLocal()
+        try:
+            boards = db.query(StyleBoard).filter(StyleBoard.user_id == user_id).all()
+            return [{"id": str(b.id), "name": b.name, "items": b.item_ids} for b in boards]
+        finally:
+            db.close()
+
+    async def get_conversational_advice(self, user_id: str, message: str) -> Dict:
+        """Simulate a context-aware LLM fashion consultant"""
+        db = SessionLocal()
+        try:
+            # 1. Fetch context (User Profile and Wardrobe)
+            profile = db.query(DBStyleProfile).filter(DBStyleProfile.user_id == user_id).first()
+            wardrobe_count = db.query(DBWardrobeItem).filter(DBWardrobeItem.user_id == user_id).count()
+
+            # 2. Logic to generate context-aware response
+            user_style = profile.style_preferences[0] if profile and profile.style_preferences else "casual"
+
+            response = ""
+            msg_lower = message.lower()
+
+            if "wear" in msg_lower or "outfit" in msg_lower:
+                response = f"Based on your {user_style} style, I'd suggest pairing a crisp white shirt with those trousers from your digital wardrobe."
+            elif "fit" in msg_lower:
+                response = "You should prioritize items with a structured shoulder based on your proportions for the best silhouette."
+            elif "trend" in msg_lower:
+                response = "Earth tones and oversized blazers are huge this season, and they'd complement your style perfectly!"
+            else:
+                response = f"I'm here to help you build your perfect look. You currently have {wardrobe_count} items in your digital wardrobe to work with!"
+
+            return {
+                "success": True,
+                "user_id": user_id,
+                "response": response,
+                "context_used": {
+                    "has_profile": profile is not None,
+                    "wardrobe_items": wardrobe_count
+                }
+            }
+        finally:
+            db.close()
+
+class AIConsultantManager:
+    """Main service shim for backwards compatibility"""
     
     def __init__(self):
-        self.ai_manager = AIConsultantManager()
-        print("AI Fashion Consultant Service initialized")
+        self.service = AIConsultantService()
+        print("AI Consultant Manager initialized")
     
-    async def create_user_style_profile(self, user_id: str, body_type: str, height: float, 
-                                      age: int, style_preferences: List[str], 
-                                      color_preferences: List[str], 
-                                      size_preferences: Dict[str, str],
-                                      budget_level: str, lifestyle: str, 
-                                      seasonal_preferences: List[str], 
-                                      fashion_goals: List[str]) -> Dict:
-        """Create user's fashion profile"""
-        try:
-            # Convert string enums to actual enums
-            body_type_enum = BodyType(body_type)
-            style_prefs_enum = [StylePreference(pref) for pref in style_preferences]
-            
-            profile = self.ai_manager.create_user_profile(
-                user_id, body_type_enum, height, age, style_prefs_enum,
-                color_preferences, size_preferences, budget_level, lifestyle,
-                seasonal_preferences, fashion_goals
-            )
-            
-            return {
-                "success": True,
-                "user_id": user_id,
-                "profile": {
-                    "body_type": profile.body_type.value,
-                    "height": profile.height,
-                    "age": profile.age,
-                    "style_preferences": [p.value for p in profile.style_preferences],
-                    "color_preferences": profile.color_preferences,
-                    "size_preferences": profile.size_preferences,
-                    "budget_level": profile.budget_level,
-                    "lifestyle": profile.lifestyle,
-                    "fashion_goals": profile.fashion_goals
-                },
-                "message": "Style profile created successfully"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to create style profile"
-            }
-    
-    async def add_wardrobe_item(self, user_id: str, name: str, category: str, 
-                              color: str, brand: str, style_tags: List[str]) -> Dict:
-        """Add an item to user's wardrobe"""
-        try:
-            item = self.ai_manager.add_wardrobe_item(
-                user_id, name, category, color, brand, style_tags
-            )
-            
-            return {
-                "success": True,
-                "item_id": item.item_id,
-                "name": item.name,
-                "category": item.category,
-                "message": "Item added to wardrobe successfully"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to add item to wardrobe"
-            }
-    
-    async def get_wardrobe_analysis(self, user_id: str) -> Dict:
-        """Get analysis of user's wardrobe"""
-        analysis = self.ai_manager.analyze_wardrobe(user_id)
-        
-        return {
-            "user_id": user_id,
-            "wardrobe_analysis": analysis
-        }
-    
-    async def get_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> Dict:
-        """Get personalized outfit recommendation"""
-        try:
-            recommendation = self.ai_manager.generate_outfit_recommendation(user_id, occasion)
-            
-            return {
-                "success": True,
-                "recommendation": {
-                    "recommendation_id": recommendation.recommendation_id,
-                    "user_id": recommendation.user_id,
-                    "product_ids": recommendation.product_ids,
-                    "category": recommendation.category,
-                    "occasion": recommendation.occasion,
-                    "confidence_score": recommendation.confidence_score,
-                    "reason": recommendation.reason,
-                    "timestamp": recommendation.timestamp
-                },
-                "message": "Outfit recommendation generated successfully"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to generate outfit recommendation"
-            }
-    
-    async def get_styling_advice(self, user_id: str, body_type: str) -> Dict:
-        """Get personalized styling advice"""
-        try:
-            body_type_enum = BodyType(body_type)
-            advice = self.ai_manager.get_personal_styling_advice(user_id, body_type_enum)
-            
-            return {
-                "success": True,
-                "user_id": user_id,
-                "body_type": body_type,
-                "styling_advice": advice,
-                "message": "Styling advice provided"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to get styling advice"
-            }
-    
-    async def get_wardrobe_suggestions(self, user_id: str) -> Dict:
-        """Get suggestions for wardrobe additions"""
-        suggestions = self.ai_manager.suggest_wardrobe_additions(user_id)
-        
-        return {
-            "user_id": user_id,
-            "suggestions": suggestions,
-            "message": "Wardrobe suggestions provided"
-        }
-    
-    async def start_fashion_consultation(self, user_id: str, consultant_type: str) -> Dict:
-        """Start a fashion consultation session"""
-        try:
-            consultant_type_enum = FashionConsultantType(consultant_type)
-            session_id = self.ai_manager.start_consultation_session(user_id, consultant_type_enum)
-            
-            return {
-                "success": True,
-                "session_id": session_id,
-                "user_id": user_id,
-                "consultant_type": consultant_type,
-                "message": "Fashion consultation session started"
-            }
-        except Exception as e:
-            return {
-                "success": False,
-                "error": str(e),
-                "message": "Failed to start consultation session"
-            }
-    
-    async def get_current_trends(self, category: str = None) -> Dict:
-        """Get current fashion trends"""
-        if category:
-            trends = self.ai_manager.get_fashion_trends(category)
-            return {
-                "category": category,
-                "trends": trends
-            }
-        else:
-            all_trends = {}
-            for cat in self.ai_manager.fashion_trends:
-                all_trends[cat] = self.ai_manager.get_fashion_trends(cat)
-            
-            return {
-                "all_trends": all_trends
-            }
+    async def create_user_style_profile(self, *args, **kwargs):
+        return await self.service.create_user_profile(*args, **kwargs)
 
-# Example usage
+    async def add_wardrobe_item(self, *args, **kwargs):
+        return await self.service.add_wardrobe_item(*args, **kwargs)
+
+    async def get_wardrobe_analysis(self, user_id: str):
+        analysis = await self.service.analyze_wardrobe(user_id)
+        return {"user_id": user_id, "wardrobe_analysis": analysis}
+
+    async def get_outfit_recommendation(self, user_id: str, occasion: str = "casual"):
+        try:
+            rec = await self.service.generate_outfit_recommendation(user_id, occasion)
+            return {"success": True, "recommendation": rec, "message": "Success"}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_styling_advice(self, user_id: str, body_type: str):
+        try:
+            body_type_enum = BodyType(body_type)
+            advice = await self.service.get_personal_styling_advice(user_id, body_type_enum)
+            return {"success": True, "user_id": user_id, "body_type": body_type, "styling_advice": advice}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_wardrobe_suggestions(self, user_id: str):
+        suggestions = await self.service.suggest_wardrobe_additions(user_id)
+        return {"user_id": user_id, "suggestions": suggestions}
+
+    async def start_fashion_consultation(self, user_id: str, consultant_type: str):
+        try:
+            ctype = FashionConsultantType(consultant_type)
+            sid = await self.service.start_consultation_session(user_id, ctype)
+            return {"success": True, "session_id": sid, "user_id": user_id, "consultant_type": consultant_type}
+        except Exception as e:
+            return {"success": False, "error": str(e)}
+
+    async def get_current_trends(self, category: str = None):
+        trends = await self.service.get_fashion_trends(category)
+        return {"category": category, "trends": trends} if category else {"all_trends": trends}
+
+    async def create_style_board(self, *args, **kwargs):
+        return await self.service.create_style_board(*args, **kwargs)
+
+    async def get_style_boards(self, *args, **kwargs):
+        return await self.service.get_style_boards(*args, **kwargs)
+
+    async def get_conversational_advice(self, *args, **kwargs):
+        return await self.service.get_conversational_advice(*args, **kwargs)
+
+# Global instance
+ai_consultant_service = AIConsultantService()
+
+async def equip_item_endpoint(user_id: str, item_id: str, equip: bool = True):
+    return await ai_consultant_service.equip_wardrobe_item(user_id, item_id, equip)
+
+async def get_equipped_endpoint(user_id: str):
+    return await ai_consultant_service.get_equipped_items(user_id)
+
+async def create_board_endpoint(user_id: str, board_data: dict):
+    return await ai_consultant_service.create_style_board(user_id, board_data.get("name"), board_data.get("item_ids"), board_data.get("description", ""))
+
+async def list_boards_endpoint(user_id: str):
+    return await ai_consultant_service.get_style_boards(user_id)
+
+async def consultant_chat_endpoint(user_id: str, chat_data: dict):
+    return await ai_consultant_service.get_conversational_advice(user_id, chat_data.get("message", ""))
+
 async def main():
-    ai_service = AIConsultantService()
-    
+    import uuid
+    from database import init_db
+    init_db()
+    ai_service = AIConsultantManager()
+
+    user_id = str(uuid.uuid4())
+
     # Create a user profile
     profile_result = await ai_service.create_user_style_profile(
-        "user_123",
+        user_id,
         "hourglass",
         170.0,
         28,
@@ -553,29 +608,29 @@ async def main():
         ["fall", "winter"],
         ["professional", "elegant"]
     )
-    
+
     print("User Profile Creation Result:")
-    print(json.dumps(profile_result, indent=2))
-    
-    if profile_result["success"]:
+    print(profile_result)
+
+    if profile_result:
         # Add items to wardrobe
         item_result = await ai_service.add_wardrobe_item(
-            "user_123",
+            user_id,
             "Black Blazer",
             "outerwear",
             "black",
             "Zara",
             ["professional", "elegant", "versatile"]
         )
-        
+
         print("\nWardrobe Item Addition Result:")
-        print(json.dumps(item_result, indent=2))
-        
+        print(item_result)
+
         # Get outfit recommendation
-        outfit_result = await ai_service.get_outfit_recommendation("user_123", "work")
-        
+        outfit_result = await ai_service.get_outfit_recommendation(user_id, "work")
+
         print("\nOutfit Recommendation:")
-        print(json.dumps(outfit_result, indent=2))
+        print(outfit_result)
 
 if __name__ == "__main__":
     import asyncio

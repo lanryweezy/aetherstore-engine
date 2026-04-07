@@ -4,6 +4,7 @@
 import os
 import json
 import numpy as np
+import trimesh
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -321,43 +322,77 @@ class ModelProcessor:
     
     def _generate_thumbnails(self, model_file: str) -> List[str]:
         """
-        Generate thumbnail images for a 3D model
-        
-        Args:
-            model_file: Path to the 3D model file
-            
-        Returns:
-            List of thumbnail file paths
+        Generate wireframe schematic thumbnails for a 3D model.
+        This provides a realistic 'CAD' feel for fashion brands.
         """
         try:
-            # In a real implementation, this would:
-            # 1. Load the 3D model
-            # 2. Render it from multiple angles
-            # 3. Save as compressed images
-            
-            # For now, we'll create placeholder thumbnails
+            from PIL import ImageDraw
+            mesh = trimesh.load(model_file, force='mesh')
             thumbnails = []
             base_name = Path(model_file).stem
-            
-            # Create placeholder thumbnail directory
             thumb_dir = Path(model_file).parent / "thumbnails"
             thumb_dir.mkdir(exist_ok=True)
-            
-            # Generate placeholder thumbnails
-            for angle in [0, 45, 90, 135, 180]:
-                thumb_path = thumb_dir / f"{base_name}_thumb_{angle}.jpg"
+
+            # Rotation angles for different views
+            views = {
+                "front": [0, 0, 0],
+                "side": [0, np.pi/2, 0],
+                "top": [np.pi/2, 0, 0],
+                "iso": [np.pi/4, np.pi/4, 0]
+            }
+
+            for view_name, rotation in views.items():
+                thumb_path = thumb_dir / f"{base_name}_{view_name}.png"
+
+                # Create canvas
+                img = Image.new('RGB', (512, 512), color=(245, 245, 245))
+                draw = ImageDraw.Draw(img)
+
+                # Copy and rotate mesh for projection
+                temp_mesh = mesh.copy()
+                if any(rotation):
+                    transform = trimesh.transformations.euler_matrix(*rotation)
+                    temp_mesh.apply_transform(transform)
+
+                # Project vertices to 2D (XY plane)
+                vertices_2d = temp_mesh.vertices[:, :2]
                 
-                # Create a simple placeholder image
-                img = Image.new('RGB', (256, 256), color=(73, 109, 137))
-                img.save(thumb_path)
+                # Normalize to fit 512x512 with padding
+                v_min, v_max = vertices_2d.min(axis=0), vertices_2d.max(axis=0)
+                scale = 400 / max(v_max - v_min)
+                offset = (v_max + v_min) / 2
+
+                points = (vertices_2d - offset) * scale + 256
+
+                # Draw wireframe (sampled edges for performance)
+                edges = temp_mesh.edges_unique
+                sample_rate = max(1, len(edges) // 2000) # Draw up to 2000 edges
+                for edge in edges[::sample_rate]:
+                    p1, p2 = points[edge[0]], points[edge[1]]
+                    draw.line([p1[0], p1[1], p2[0], p2[1]], fill=(100, 100, 100), width=1)
+
+                img.save(thumb_path, 'PNG')
                 thumbnails.append(str(thumb_path))
             
-            logger.debug(f"Generated {len(thumbnails)} thumbnails for {model_file}")
+            logger.info(f"Generated {len(thumbnails)} wireframe thumbnails for {model_file}")
             return thumbnails
             
         except Exception as e:
-            logger.warning(f"Thumbnail generation failed for {model_file}: {str(e)}")
-            return []
+            logger.warning(f"Wireframe generation failed: {str(e)}. Falling back to basic placeholder.")
+            return self._generate_basic_placeholders(model_file)
+
+    def _generate_basic_placeholders(self, model_file: str) -> List[str]:
+        """Fallback method for simple placeholders"""
+        thumbnails = []
+        base_name = Path(model_file).stem
+        thumb_dir = Path(model_file).parent / "thumbnails"
+        thumb_dir.mkdir(exist_ok=True)
+        for view in ["front", "side", "top"]:
+            thumb_path = thumb_dir / f"{base_name}_{view}.jpg"
+            img = Image.new('RGB', (256, 256), color=(73, 109, 137))
+            img.save(thumb_path)
+            thumbnails.append(str(thumb_path))
+        return thumbnails
     
     def process_texture(self, input_file: str, output_file: str, 
                        quality: int = 80, resolution: str = "1024x1024") -> bool:

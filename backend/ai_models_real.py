@@ -209,22 +209,70 @@ class RealBodyMeasurementModel:
             raise
     
     def _fallback_measurements(self, image, reference_height: Optional[float]) -> Dict[str, float]:
-        """Fallback measurements when MediaPipe is not available"""
+        """Upgrade: Use real OpenCV Silhouette analysis for measurement extraction"""
+        try:
+            # 1. Convert to grayscale and blur
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # 2. Extract silhouette using thresholding
+            _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+            # 3. Find contours
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                return self._basic_geometric_fallback(image, reference_height)
+
+            # Get largest contour (the person)
+            person_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(person_contour)
+
+            # 4. Calculate real scale (pixels to cm)
+            actual_height_cm = reference_height or 175.0
+            px_to_cm = actual_height_cm / h
+
+            # 5. Extract width-based measurements from the silhouette
+            # Sample at different heights of the bounding box
+            shoulder_y = y + int(h * 0.2)
+            waist_y = y + int(h * 0.45)
+            hips_y = y + int(h * 0.6)
+
+            def get_width_at_y(target_y):
+                # Look for pixels in the silhouette at this row
+                row = thresh[target_y, x:x+w]
+                pixels = np.where(row > 0)[0]
+                return len(pixels) * px_to_cm if len(pixels) > 0 else 0
+
+            # Proportional Factors
+            shoulder_width = get_width_at_y(shoulder_y) or (w * px_to_cm * 0.8)
+            waist_width = get_width_at_y(waist_y) or (w * px_to_cm * 0.6)
+            hips_width = get_width_at_y(hips_y) or (w * px_to_cm * 0.85)
+
+            return {
+                "height": actual_height_cm,
+                "shoulder_width": shoulder_width,
+                "chest": shoulder_width * 1.15,
+                "waist": waist_width * 1.2, # Circular approximation
+                "hips": hips_width * 1.2,
+                "arm_length": actual_height_cm * 0.35,
+                "inseam": actual_height_cm * 0.45,
+                "analysis_type": "silhouette_cv"
+            }
+        except Exception as e:
+            logger.warning(f"Silhouette analysis failed: {e}. Using basic fallback.")
+            return self._basic_geometric_fallback(image, reference_height)
+
+    def _basic_geometric_fallback(self, image, reference_height: Optional[float]) -> Dict[str, float]:
+        """Basic fallback based on image dimensions only"""
         height, width = image.shape[:2]
-        
-        # Simple fallback measurements based on image dimensions
-        scale = reference_height / height if reference_height else 170.0 / height
-        
+        scale = reference_height / height if reference_height else 175.0 / height
         return {
             "height": reference_height or (height * scale),
-            "chest": width * scale * 0.3,
-            "waist": width * scale * 0.25,
-            "hips": width * scale * 0.32,
             "shoulder_width": width * scale * 0.2,
-            "arm_length": (reference_height or (height * scale)) * 0.38,
-            "inseam": (reference_height or (height * scale)) * 0.45,
-            "neck": width * scale * 0.08,
-            "bicep": (reference_height or (height * scale)) * 0.38 * 0.12
+            "chest": width * scale * 0.25,
+            "waist": width * scale * 0.22,
+            "hips": width * scale * 0.28,
+            "analysis_type": "basic_geometric"
         }
     
     def _enhance_with_sam_3d_body(self, image_path: str, measurements: Dict[str, float]) -> Dict[str, float]:
@@ -309,18 +357,30 @@ class RealBodyMeasurementModel:
             # This is approximate
             scale = 170.0 / body_height_px  # Assume average height of 170cm
         
+        # Proportions based on average human (height ~7.5 - 8 heads)
+        avg_height = 175.0
+        avg_shoulder = 43.0
+        avg_waist = 80.0
+        avg_hips = 95.0
+
+        current_height = reference_height or (body_height_px * scale)
+        shoulder_width = shoulder_width_px * scale
+        waist_width = hip_width_px * scale * 0.85
+        hips_width = hip_width_px * scale
+
         measurements = {
-            "shoulder_width": shoulder_width_px * scale,
-            "chest": shoulder_width_px * scale * 1.1,  # Chest is wider than shoulders
-            "waist": hip_width_px * scale * 0.85,  # Waist is narrower than hips
-            "hips": hip_width_px * scale,
+            "shoulder_width": shoulder_width,
+            "chest": shoulder_width * 1.1,
+            "waist": waist_width,
+            "hips": hips_width,
+            "height": current_height,
+            # Proportional scale factors for 3D rendering (relative to average model)
+            "scale_factors": {
+                "y": current_height / avg_height,
+                "x": (shoulder_width / avg_shoulder + hips_width / avg_hips) / 2,
+                "z": (waist_width / avg_waist + hips_width / avg_hips) / 2
+            }
         }
-        
-        # Estimate other measurements based on proportions
-        if reference_height:
-            measurements["height"] = reference_height
-        else:
-            measurements["height"] = body_height_px * scale
         
         # Estimate arm length, inseam, etc. based on body proportions
         measurements["arm_length"] = measurements["height"] * 0.38
@@ -446,37 +506,73 @@ class RealFitPredictionModel:
             return self._predict_rule_based(user_measurements, size_chart)
     
     def _predict_rule_based(self, user_measurements: Dict, size_chart: Dict) -> Dict[str, Any]:
-        """Rule-based fit prediction (fallback)"""
+        """Weighted rule-based fit prediction (fallback)"""
+        # Critical measurements for different garment types
+        # Higher weight = more important for fit
+        weights = {
+            "shoulder_width": 1.5,
+            "chest": 1.2,
+            "waist": 1.0,
+            "hips": 1.2,
+            "height": 0.5,
+            "arm_length": 0.8,
+            "inseam": 0.8
+        }
+
         best_size = None
         best_score = 0
         size_scores = {}
         
         for size, measurements in size_chart.items():
-            score = 0
-            matches = 0
+            weighted_score = 0
+            total_weight = 0
             
             for key, user_val in user_measurements.items():
                 if key in measurements:
                     product_val = measurements[key]
+                    weight = weights.get(key, 1.0)
+
                     diff = abs(user_val - product_val)
-                    # Score based on how close measurements are
-                    match_score = max(0, 1 - (diff / user_val))
-                    score += match_score
-                    matches += 1
+                    # Calculate tolerance (e.g., 2cm is acceptable, 5cm is poor)
+                    tolerance = user_val * 0.05
+                    match_score = max(0, 1 - (diff / (tolerance * 5)))
+
+                    weighted_score += (match_score * weight)
+                    total_weight += weight
             
-            if matches > 0:
-                score = score / matches
-                size_scores[size] = score
+            if total_weight > 0:
+                final_score = weighted_score / total_weight
+                size_scores[size] = round(final_score, 3)
                 
-                if score > best_score:
-                    best_score = score
+                if final_score > best_score:
+                    best_score = final_score
                     best_size = size
         
         return {
             "recommended_size": best_size or "M",
-            "confidence": best_score,
-            "size_scores": size_scores
+            "confidence": round(best_score, 2),
+            "size_scores": size_scores,
+            "fit_heatmap": self._calculate_fit_heatmap(user_measurements, size_chart.get(best_size, {})),
+            "analysis": "Used weighted importance: Shoulder > Chest > Waist"
         }
+
+    def _calculate_fit_heatmap(self, user: Dict, product: Dict) -> Dict[str, str]:
+        """Detailed breakdown of fit per body region (Perfect, Tight, Loose)"""
+        heatmap = {}
+        for region in ["shoulder_width", "chest", "waist", "hips"]:
+            if region in user and region in product:
+                u_val, p_val = user[region], product[region]
+                diff = p_val - u_val
+
+                # Fashion logic:
+                # - Positive diff = Loose
+                # - Negative diff = Tight
+                # - Near zero = Perfect
+                if abs(diff) < 1.0: heatmap[region] = "perfect"
+                elif diff > 3.0: heatmap[region] = "loose"
+                elif diff < -1.0: heatmap[region] = "tight"
+                else: heatmap[region] = "good"
+        return heatmap
 
 class RealStyleRecommendationModel:
     """Real style recommendation using collaborative filtering and embeddings"""

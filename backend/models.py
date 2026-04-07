@@ -56,8 +56,10 @@ class Store(Base):
     brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"))
     name = Column(String(255), nullable=False)
     template = Column(String(100), default="modern-gallery")
+    lighting_preset = Column(String(100), default="studio") # studio, cinematic, sunlight, neon, warm, minimalist
     description = Column(Text)
     settings = Column(JSON, default={})
+    scene_state = Column(JSON, default={}) # 3D Layout: coords and rotations for props
     is_published = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
@@ -286,4 +288,136 @@ class BrandTemplate(Base):
     preview_image_url = Column(String(500))
     is_public = Column(Boolean, default=False)
     created_by = Column(UUID(as_uuid=False), ForeignKey("users.id"))
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class Friendship(Base):
+    __tablename__ = "friendships"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    friend_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    status = Column(String(50), default="accepted") # accepted, pending, blocked
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class SocialEvent(Base):
+    __tablename__ = "social_events"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    target_user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
+    event_type = Column(String(50), nullable=False)
+    data = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class GroupSession(Base):
+    __tablename__ = "group_sessions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    name = Column(String(255), nullable=False)
+    creator_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="CASCADE"))
+    status = Column(String(50), default="planned") # planned, active, completed
+    settings = Column(JSON, default={})
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    started_at = Column(DateTime(timezone=True))
+    ended_at = Column(DateTime(timezone=True))
+
+class InventoryLog(Base):
+    __tablename__ = "inventory_logs"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    change_amount = Column(Integer, nullable=False)
+    reason = Column(String(255)) # purchase, restock, return, adjustment
+    remaining_stock = Column(Integer, nullable=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class UserStyleProfile(Base):
+    __tablename__ = "user_style_profiles"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    body_type = Column(String(50))
+    height = Column(Float)
+    age = Column(Integer)
+    style_preferences = Column(JSON) # List of styles
+    color_preferences = Column(JSON) # List of colors
+    size_preferences = Column(JSON) # category -> size
+    budget_level = Column(String(50))
+    lifestyle = Column(String(100))
+    seasonal_preferences = Column(JSON)
+    fashion_goals = Column(JSON)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class WardrobeItem(Base):
+    __tablename__ = "wardrobe_items"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    name = Column(String(255), nullable=False)
+    category = Column(String(100))
+    color = Column(String(50))
+    brand = Column(String(100))
+    purchase_date = Column(DateTime(timezone=True), server_default=func.now())
+    times_worn = Column(Integer, default=0)
+    condition = Column(String(50), default="excellent")
+    style_tags = Column(JSON)
+    is_equipped = Column(Boolean, default=False) # Whether it's currently worn by avatar
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class StyleBoard(Base):
+    __tablename__ = "style_boards"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    item_ids = Column(JSON) # List of WardrobeItem or Product IDs
+    is_public = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+
+class UserActivity(Base):
+    __tablename__ = "user_activities"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    activity_type = Column(String(50), nullable=False) # view_product, visit_store, try_on, search
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
+    store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
+    metadata_json = Column(JSON, default={})
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class UserLoyalty(Base):
+    __tablename__ = "user_loyalty"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"), unique=True)
+    brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"), nullable=True) # If multi-brand, null means global
+    points_balance = Column(Integer, default=0)
+    tier = Column(String(50), default="bronze") # bronze, silver, gold, platinum
+    total_earned = Column(Integer, default=0)
+    last_activity = Column(DateTime(timezone=True), server_default=func.now())
+
+class LoyaltyTransaction(Base):
+    __tablename__ = "loyalty_transactions"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    amount = Column(Integer, nullable=False) # Positive for earn, negative for redeem
+    reason = Column(String(255)) # purchase, review, referral, social_share
+    metadata_json = Column(JSON, default={})
+    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+
+class ProductReview(Base):
+    __tablename__ = "product_reviews"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="CASCADE"))
+    rating = Column(Integer, nullable=False) # 1-5
+    comment = Column(Text)
+    is_verified_purchase = Column(Boolean, default=False)
+    helpful_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())

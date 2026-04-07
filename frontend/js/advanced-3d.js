@@ -168,11 +168,22 @@ class Advanced3DRenderer {
     scaleAvatar(measurements) {
         if (!this.avatar || !measurements) return;
         
-        // Scale avatar based on height measurement (simplified)
-        const baseHeight = 1.75; // meters
-        const scaleFactor = (measurements.height / 100) / baseHeight;
+        // Non-uniform scaling based on proportional AI factors
+        if (measurements.scale_factors) {
+            const sf = measurements.scale_factors;
+            console.log('Applying proportional AI scaling:', sf);
+            this.avatar.scale.set(sf.x, sf.y, sf.z);
+        } else {
+            // Fallback: Uniform scaling based on height only
+            const baseHeight = 175.0; // cm
+            const scaleFactor = measurements.height / baseHeight;
+            this.avatar.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        }
         
-        this.avatar.scale.set(scaleFactor, scaleFactor, scaleFactor);
+        // Adjust position so feet stay on the floor
+        const box = new THREE.Box3().setFromObject(this.avatar);
+        const height = box.max.y - box.min.y;
+        this.avatar.position.y = 0; // Feet should be at 0 in a well-modeled avatar
     }
     
     async loadProduct(modelPath, productId, position = {x: 0, y: 0, z: 0}) {
@@ -553,13 +564,31 @@ class Advanced3DRenderer {
         console.log('Added fit indicators for poor fit');
     }
     
-    applyStyleRecommendations(product, fitAnalysis) {
-        // Apply style adjustments based on recommendations
+    async applyStyleRecommendations(product, fitAnalysis) {
+        // Apply style adjustments and visual tooltips based on AI suggestions
         if (!fitAnalysis || !product) return;
         
-        // In a real implementation, this would adjust colors, textures, or styling
-        // based on the AI's style recommendations
-        console.log('Applied style recommendations');
+        console.log('Fetching AI Styling Advice...');
+        try {
+            // Call the AI Consultant backend
+            const response = await fetch(`/api/consultant/styling-advice/${window.userId || 'guest'}?body_type=${fitAnalysis.body_type || 'hourglass'}`);
+            const adviceData = await response.json();
+
+            if (adviceData.success && adviceData.styling_advice) {
+                this.showStylingTooltips(product, adviceData.styling_advice);
+            }
+        } catch (error) {
+            console.warn('Could not load AI styling advice:', error);
+        }
+    }
+
+    showStylingTooltips(product, adviceList) {
+        // Create 3D floating tooltips for styling advice
+        adviceList.forEach((advice, index) => {
+            console.log(`AI Suggestion ${index + 1}: ${advice}`);
+            // In a full implementation, this would create THREE.Sprite or HTML overlays
+            // for the 3D scene pointing to relevant parts of the garment.
+        });
     }
 }
 

@@ -18,6 +18,7 @@ from crud import (
     remove_item_from_cart, get_brand, get_store
 )
 from payment_service_brand import get_brand_payment_service
+from email_service import email_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 logger = logging.getLogger(__name__)
@@ -191,9 +192,47 @@ async def create_order_endpoint(
         
         db.commit()
         db.refresh(db_order)
+
+        # DIGITAL WARDROBE INTEGRATION:
+        # Automatically add purchased items to user's virtual wardrobe
+        from ai_consultant import AIConsultantService
+        consultant_service = AIConsultantService()
+        for item_data in order_items_data:
+            product = get_product(db, item_data["product_id"])
+            if product:
+                # We use a background task in a real app, but for now direct call
+                await consultant_service.add_wardrobe_item(
+                    user_id=current_user.id,
+                    name=product.name,
+                    category=product.category or "unspecified",
+                    color=item_data.get("color") or "original",
+                    brand=product.brand.name if product.brand else "Unknown",
+                    style_tags=[product.category] if product.category else []
+                )
         
         # Get order items for response
         order_items = db.query(OrderItem).filter(OrderItem.order_id == db_order.id).all()
+
+        # Send Order Confirmation Email
+        try:
+            # Safely get brand name
+            brand_name = "Aetherstore Merchant"
+            if order_items_data:
+                first_product = get_product(db, order_items_data[0]["product_id"])
+                if first_product and first_product.brand:
+                    brand_name = first_product.brand.name
+
+            await email_service.send_order_confirmation(
+                customer_email=current_user.email,
+                customer_name=current_user.name,
+                order_id=db_order.id,
+                total_amount=db_order.total_amount,
+                order_status=db_order.status,
+                brand_name=brand_name
+            )
+        except Exception as e:
+            logger.warning(f"Email confirmation failed: {e}")
+
         items_response = []
         for item in order_items:
             product = get_product(db, item.product_id)
