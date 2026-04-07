@@ -362,4 +362,5 @@ class WardrobeItem(Base):
     times_worn = Column(Integer, default=0)
     condition = Column(String(50), default="excellent")
     style_tags = Column(JSON)
+    is_equipped = Column(Boolean, default=False) # Whether it's currently worn by avatar
     created_at = Column(DateTime(timezone=True), server_default=func.now())

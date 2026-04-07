@@ -17,6 +17,11 @@ api_router.include_router(payments.router, tags=["payments"])
 api_router.include_router(orders.router, tags=["orders"])
 api_router.include_router(subscriptions.router, tags=["subscriptions"])
 
+# AI Consultant Extended Endpoints
+from ai_consultant import equip_item_endpoint, get_equipped_endpoint
+api_router.add_api_route("/consultant/wardrobe/equip/{user_id}/{item_id}", equip_item_endpoint, methods=["POST"], tags=["consultant"])
+api_router.add_api_route("/consultant/wardrobe/equipped/{user_id}", get_equipped_endpoint, methods=["GET"], tags=["consultant"])
+
 # Health check endpoint
 @api_router.get("/health")
 async def health_check():

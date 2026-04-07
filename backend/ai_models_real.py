@@ -209,22 +209,70 @@ class RealBodyMeasurementModel:
             raise
     
     def _fallback_measurements(self, image, reference_height: Optional[float]) -> Dict[str, float]:
-        """Fallback measurements when MediaPipe is not available"""
+        """Upgrade: Use real OpenCV Silhouette analysis for measurement extraction"""
+        try:
+            # 1. Convert to grayscale and blur
+            gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+            blurred = cv2.GaussianBlur(gray, (5, 5), 0)
+
+            # 2. Extract silhouette using thresholding
+            _, thresh = cv2.threshold(blurred, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+            # 3. Find contours
+            contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not contours:
+                return self._basic_geometric_fallback(image, reference_height)
+
+            # Get largest contour (the person)
+            person_contour = max(contours, key=cv2.contourArea)
+            x, y, w, h = cv2.boundingRect(person_contour)
+
+            # 4. Calculate real scale (pixels to cm)
+            actual_height_cm = reference_height or 175.0
+            px_to_cm = actual_height_cm / h
+
+            # 5. Extract width-based measurements from the silhouette
+            # Sample at different heights of the bounding box
+            shoulder_y = y + int(h * 0.2)
+            waist_y = y + int(h * 0.45)
+            hips_y = y + int(h * 0.6)
+
+            def get_width_at_y(target_y):
+                # Look for pixels in the silhouette at this row
+                row = thresh[target_y, x:x+w]
+                pixels = np.where(row > 0)[0]
+                return len(pixels) * px_to_cm if len(pixels) > 0 else 0
+
+            # Proportional Factors
+            shoulder_width = get_width_at_y(shoulder_y) or (w * px_to_cm * 0.8)
+            waist_width = get_width_at_y(waist_y) or (w * px_to_cm * 0.6)
+            hips_width = get_width_at_y(hips_y) or (w * px_to_cm * 0.85)
+
+            return {
+                "height": actual_height_cm,
+                "shoulder_width": shoulder_width,
+                "chest": shoulder_width * 1.15,
+                "waist": waist_width * 1.2, # Circular approximation
+                "hips": hips_width * 1.2,
+                "arm_length": actual_height_cm * 0.35,
+                "inseam": actual_height_cm * 0.45,
+                "analysis_type": "silhouette_cv"
+            }
+        except Exception as e:
+            logger.warning(f"Silhouette analysis failed: {e}. Using basic fallback.")
+            return self._basic_geometric_fallback(image, reference_height)
+
+    def _basic_geometric_fallback(self, image, reference_height: Optional[float]) -> Dict[str, float]:
+        """Basic fallback based on image dimensions only"""
         height, width = image.shape[:2]
-        
-        # Simple fallback measurements based on image dimensions
-        scale = reference_height / height if reference_height else 170.0 / height
-        
+        scale = reference_height / height if reference_height else 175.0 / height
         return {
             "height": reference_height or (height * scale),
-            "chest": width * scale * 0.3,
-            "waist": width * scale * 0.25,
-            "hips": width * scale * 0.32,
             "shoulder_width": width * scale * 0.2,
-            "arm_length": (reference_height or (height * scale)) * 0.38,
-            "inseam": (reference_height or (height * scale)) * 0.45,
-            "neck": width * scale * 0.08,
-            "bicep": (reference_height or (height * scale)) * 0.38 * 0.12
+            "chest": width * scale * 0.25,
+            "waist": width * scale * 0.22,
+            "hips": width * scale * 0.28,
+            "analysis_type": "basic_geometric"
         }
     
     def _enhance_with_sam_3d_body(self, image_path: str, measurements: Dict[str, float]) -> Dict[str, float]:
