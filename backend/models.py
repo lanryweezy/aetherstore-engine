@@ -58,6 +58,7 @@ class Store(Base):
     template = Column(String(100), default="modern-gallery")
     description = Column(Text)
     settings = Column(JSON, default={})
+    scene_state = Column(JSON, default={}) # 3D Layout: coords and rotations for props
     is_published = Column(Boolean, default=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())

@@ -120,7 +120,7 @@ class AIConsultantService:
             }
         }
     
-    def create_user_profile(self, user_id: str, body_type: BodyType, height: float, 
+    async def create_user_profile(self, user_id: str, body_type: BodyType, height: float,
                            age: int, style_preferences: List[StylePreference], 
                            color_preferences: List[str], size_preferences: Dict[str, str],
                            budget_level: str, lifestyle: str, 
@@ -167,7 +167,7 @@ class AIConsultantService:
         finally:
             db.close()
     
-    def add_wardrobe_item(self, user_id: str, name: str, category: str, color: str, 
+    async def add_wardrobe_item(self, user_id: str, name: str, category: str, color: str,
                          brand: str, style_tags: List[str]) -> WardrobeItem:
         """Add an item to user's wardrobe and persist to DB"""
         db = SessionLocal()
@@ -203,7 +203,7 @@ class AIConsultantService:
         finally:
             db.close()
     
-    def analyze_wardrobe(self, user_id: str) -> Dict:
+    async def analyze_wardrobe(self, user_id: str) -> Dict:
         """Analyze user's wardrobe and provide insights"""
         if user_id not in self.wardrobe_items:
             return {"message": "No wardrobe items found", "user_id": user_id}
@@ -238,7 +238,7 @@ class AIConsultantService:
         
         return insights
     
-    def generate_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> FashionRecommendation:
+    async def generate_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> FashionRecommendation:
         """Generate an outfit recommendation for the user"""
         recommendation_id = f"rec_{uuid.uuid4().hex[:12]}"
         
@@ -286,7 +286,7 @@ class AIConsultantService:
         print(f"Generated outfit recommendation for {user_id} for {occasion} occasion")
         return recommendation
     
-    def get_personal_styling_advice(self, user_id: str, body_type: BodyType) -> List[str]:
+    async def get_personal_styling_advice(self, user_id: str, body_type: BodyType) -> List[str]:
         """Provide styling advice based on body type"""
         advice_map = {
             BodyType.HOURGLASS: [
@@ -323,7 +323,7 @@ class AIConsultantService:
         
         return advice_map.get(body_type, ["General styling advice based on your shape"])
     
-    def suggest_wardrobe_additions(self, user_id: str) -> List[Dict]:
+    async def suggest_wardrobe_additions(self, user_id: str) -> List[Dict]:
         """Suggest items to add to user's wardrobe"""
         suggestions = []
         
@@ -367,7 +367,7 @@ class AIConsultantService:
         
         return suggestions
     
-    def start_consultation_session(self, user_id: str, consultant_type: FashionConsultantType) -> str:
+    async def start_consultation_session(self, user_id: str, consultant_type: FashionConsultantType) -> str:
         """Start a fashion consultation session"""
         session_id = f"session_{uuid.uuid4().hex[:12]}"
         
@@ -385,11 +385,11 @@ class AIConsultantService:
         
         return session_id
     
-    def get_fashion_trends(self, category: str) -> Dict:
+    async def get_fashion_trends(self, category: str) -> Dict:
         """Get current fashion trends for a category"""
         return self.fashion_trends.get(category, {})
     
-    def update_wardrobe_item_usage(self, user_id: str, item_id: str):
+    async def update_wardrobe_item_usage(self, user_id: str, item_id: str):
         """Update how often an item has been worn"""
         if user_id in self.wardrobe_items:
             for item in self.wardrobe_items[user_id]:
@@ -417,7 +417,7 @@ class AIConsultantManager:
             body_type_enum = BodyType(body_type)
             style_prefs_enum = [StylePreference(pref) for pref in style_preferences]
             
-            profile = self.ai_manager.create_user_profile(
+            profile = await self.ai_manager.create_user_profile(
                 user_id, body_type_enum, height, age, style_prefs_enum,
                 color_preferences, size_preferences, budget_level, lifestyle,
                 seasonal_preferences, fashion_goals
@@ -450,7 +450,7 @@ class AIConsultantManager:
                               color: str, brand: str, style_tags: List[str]) -> Dict:
         """Add an item to user's wardrobe"""
         try:
-            item = self.ai_manager.add_wardrobe_item(
+            item = await self.ai_manager.add_wardrobe_item(
                 user_id, name, category, color, brand, style_tags
             )
             
@@ -470,7 +470,7 @@ class AIConsultantManager:
     
     async def get_wardrobe_analysis(self, user_id: str) -> Dict:
         """Get analysis of user's wardrobe"""
-        analysis = self.ai_manager.analyze_wardrobe(user_id)
+        analysis = await self.ai_manager.analyze_wardrobe(user_id)
         
         return {
             "user_id": user_id,
@@ -480,7 +480,7 @@ class AIConsultantManager:
     async def get_outfit_recommendation(self, user_id: str, occasion: str = "casual") -> Dict:
         """Get personalized outfit recommendation"""
         try:
-            recommendation = self.ai_manager.generate_outfit_recommendation(user_id, occasion)
+            recommendation = await self.ai_manager.generate_outfit_recommendation(user_id, occasion)
             
             return {
                 "success": True,
@@ -507,7 +507,7 @@ class AIConsultantManager:
         """Get personalized styling advice"""
         try:
             body_type_enum = BodyType(body_type)
-            advice = self.ai_manager.get_personal_styling_advice(user_id, body_type_enum)
+            advice = await self.ai_manager.get_personal_styling_advice(user_id, body_type_enum)
             
             return {
                 "success": True,
@@ -525,7 +525,7 @@ class AIConsultantManager:
     
     async def get_wardrobe_suggestions(self, user_id: str) -> Dict:
         """Get suggestions for wardrobe additions"""
-        suggestions = self.ai_manager.suggest_wardrobe_additions(user_id)
+        suggestions = await self.ai_manager.suggest_wardrobe_additions(user_id)
         
         return {
             "user_id": user_id,
@@ -537,7 +537,7 @@ class AIConsultantManager:
         """Start a fashion consultation session"""
         try:
             consultant_type_enum = FashionConsultantType(consultant_type)
-            session_id = self.ai_manager.start_consultation_session(user_id, consultant_type_enum)
+            session_id = await self.ai_manager.start_consultation_session(user_id, consultant_type_enum)
             
             return {
                 "success": True,

@@ -200,6 +200,7 @@ async def upload_product_image(image_data: ProductImageCreate, current_user = De
 async def upload_3d_model(product_id: str, file: UploadFile = File(...), 
                           current_user = Depends(get_current_active_user),
                           db: Session = Depends(get_db)):
+    """Upload and automatically optimize a 3D model for the web"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -210,13 +211,34 @@ async def upload_3d_model(product_id: str, file: UploadFile = File(...),
 
     upload_dir = "uploads/3d_models"
     os.makedirs(upload_dir, exist_ok=True)
-    file_path = os.path.join(upload_dir, f"{product_id}_{uuid.uuid4()}{os.path.splitext(file.filename)[1]}")
+    raw_path = os.path.join(upload_dir, f"raw_{product_id}_{uuid.uuid4()}{os.path.splitext(file.filename)[1]}")
+    optimized_path = os.path.join(upload_dir, f"opt_{product_id}_{uuid.uuid4()}.glb")
 
-    with open(file_path, "wb+") as file_object:
+    # Save original file
+    with open(raw_path, "wb+") as file_object:
         file_object.write(await file.read())
 
-    update_product(db, product_id, {"model_3d_url": file_path})
-    return {"location": file_path}
+    # TRIGGER AUTO-OPTIMIZATION
+    from 3d_processing import optimize_3d_model, OptimizationLevel
+    try:
+        # Decimate mesh and compress textures automatically
+        result = optimize_3d_model(raw_path, optimized_path, OptimizationLevel.MEDIUM)
+        if result.success:
+            final_path = optimized_path
+            os.remove(raw_path) # Clean up raw file
+        else:
+            final_path = raw_path # Fallback to raw if optimization fails
+            logger.warning(f"3D Optimization failed for {product_id}: {result.error_message}")
+    except Exception as e:
+        final_path = raw_path
+        logger.error(f"Error in 3D pipeline for {product_id}: {e}")
+
+    update_product(db, product_id, {"model_3d_url": final_path})
+    return {
+        "location": final_path,
+        "optimized": final_path == optimized_path,
+        "metadata": result.metadata if result.success else None
+    }
 
 @router.get("/{product_id}/images/", response_model=List[ProductImageResponse])
 async def get_product_images(product_id: str, db: Session = Depends(get_db)):

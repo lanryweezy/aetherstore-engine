@@ -18,15 +18,45 @@ class StoreManager {
         // Wait for A-Frame scene to load
         const sceneEl = document.querySelector('a-scene');
         if (sceneEl) {
-            sceneEl.addEventListener('loaded', () => {
+            sceneEl.addEventListener('loaded', async () => {
                 this.scene = sceneEl;
                 this.camera = document.getElementById('main-camera');
                 this.storeEnvironment = document.getElementById('store-environment');
                 
+                // Fetch custom layout from API
+                const storeId = window.location.pathname.split('/').pop();
+                await this.loadCustomLayout(storeId);
+
                 this.setupStoreEnvironment();
                 this.loadStoreProducts();
             });
         }
+    }
+
+    async loadCustomLayout(storeId) {
+        console.log('Fetching custom 3D layout for store:', storeId);
+        try {
+            const response = await fetch(`/api/stores/${storeId}/layout`);
+            const layout = await response.json();
+            if (layout && Object.keys(layout).length > 0) {
+                this.applyCustomLayout(layout);
+            }
+        } catch (error) {
+            console.warn('Could not load custom layout, using default template.');
+        }
+    }
+
+    applyCustomLayout(layout) {
+        // Dynamic repositioning of store props (mannequins, racks, etc.)
+        Object.entries(layout).forEach(([id, transform]) => {
+            const el = document.getElementById(id);
+            if (el) {
+                if (transform.position) el.setAttribute('position', transform.position);
+                if (transform.rotation) el.setAttribute('rotation', transform.rotation);
+                if (transform.scale) el.setAttribute('scale', transform.scale);
+            }
+        });
+        console.log('Custom 3D layout applied successfully');
     }
     
     setupStoreEnvironment() {

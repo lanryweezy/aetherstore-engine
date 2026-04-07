@@ -3,7 +3,7 @@
 
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel
-from typing import List, Optional
+from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 from sqlalchemy.orm import Session
@@ -22,6 +22,7 @@ class StoreCreate(BaseModel):
     template: Optional[str] = "modern-gallery"
     description: Optional[str] = None
     settings: Optional[dict] = {}
+    scene_state: Optional[dict] = {}
     is_published: Optional[bool] = False
 
 class StoreUpdate(BaseModel):
@@ -29,6 +30,7 @@ class StoreUpdate(BaseModel):
     template: Optional[str] = None
     description: Optional[str] = None
     settings: Optional[dict] = None
+    scene_state: Optional[dict] = None
     is_published: Optional[bool] = None
     is_active: Optional[bool] = None
 
@@ -39,6 +41,7 @@ class StoreResponse(BaseModel):
     template: str
     description: Optional[str] = None
     settings: dict
+    scene_state: dict
     is_published: bool
     created_at: datetime
     updated_at: Optional[datetime] = None
@@ -99,6 +102,30 @@ async def update_existing_store(store_id: str, store: StoreUpdate, current_user 
 
     update_data = store.dict(exclude_unset=True)
     return update_store(db, store_id, update_data)
+
+@router.get("/{store_id}/layout", response_model=dict)
+async def get_store_layout(store_id: str, db: Session = Depends(get_db)):
+    """Retrieve the custom 3D scene state for the store builder"""
+    db_store = get_store(db, store_id)
+    if not db_store:
+        raise HTTPException(status_code=404, detail="Store not found")
+    return db_store.scene_state or {}
+
+@router.put("/{store_id}/layout")
+async def save_store_layout(store_id: str, layout: dict, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
+    """Persist the 3D position/rotation of all props in the virtual store"""
+    db_store = get_store(db, store_id)
+    if not db_store:
+        raise HTTPException(status_code=404, detail="Store not found")
+
+    brand = get_brand(db, db_store.brand_id)
+    if brand.owner_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    db_store.scene_state = layout
+    db_store.updated_at = datetime.utcnow()
+    db.commit()
+    return {"status": "layout saved"}
 
 @router.delete("/{store_id}")
 async def delete_existing_store(store_id: str, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
