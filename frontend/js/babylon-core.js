@@ -17,6 +17,7 @@ class BabylonEngine {
         this.camera = null;
         this.lights = [];
         this.avatar = null;
+        this.remoteAvatars = new Map(); # Store other users in the same room
         this.physicsEnabled = false;
 
         this.init();
@@ -95,6 +96,41 @@ class BabylonEngine {
         } else {
             const scale = measurements.height / 175.0;
             mesh.scaling = new BABYLON.Vector3(scale, scale, scale);
+        }
+    }
+
+    /**
+     * Handle real-time sync of remote users' avatars
+     */
+    updateRemoteAvatar(userId, transform) {
+        if (userId === window.userId) return;
+
+        let remoteMesh = this.remoteAvatars.get(userId);
+
+        if (!remoteMesh) {
+            // Create a simple placeholder or clone existing avatar if not yet loaded
+            console.log('Spawning remote avatar for user:', userId);
+            remoteMesh = BABYLON.MeshBuilder.CreateCapsule("remote_" + userId, {height: 1.75, radius: 0.3}, this.scene);
+            const material = new BABYLON.StandardMaterial("remoteMat", this.scene);
+            material.diffuseColor = new BABYLON.Color3(0.4, 0.4, 0.4);
+            remoteMesh.material = material;
+            this.remoteAvatars.set(userId, remoteMesh);
+        }
+
+        if (transform.position) {
+            remoteMesh.position = new BABYLON.Vector3(transform.position.x, transform.position.y, transform.position.z);
+        }
+        if (transform.rotation) {
+            remoteMesh.rotation = new BABYLON.Vector3(transform.rotation.x, transform.rotation.y, transform.rotation.z);
+        }
+    }
+
+    removeRemoteAvatar(userId) {
+        const mesh = this.remoteAvatars.get(userId);
+        if (mesh) {
+            mesh.dispose();
+            this.remoteAvatars.delete(userId);
+            console.log('Removed remote avatar:', userId);
         }
     }
 

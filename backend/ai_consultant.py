@@ -12,7 +12,7 @@ from enum import Enum
 import uuid
 from sqlalchemy.orm import Session
 from database import SessionLocal
-from models import UserStyleProfile as DBStyleProfile, WardrobeItem as DBWardrobeItem
+from models import UserStyleProfile as DBStyleProfile, WardrobeItem as DBWardrobeItem, StyleBoard
 
 class FashionConsultantType(Enum):
     STYLE_ADVISOR = "style_advisor"
@@ -205,7 +205,6 @@ class AIConsultantService:
     
     async def analyze_wardrobe(self, user_id: str) -> Dict:
         """Analyze user's wardrobe and provide insights"""
-        # In a real app, fetch from DB. For now use cache.
         if user_id not in self.wardrobe_items:
             return {"message": "No wardrobe items found", "user_id": user_id}
         
@@ -432,8 +431,34 @@ class AIConsultantService:
         finally:
             db.close()
 
+    async def create_style_board(self, user_id: str, name: str, item_ids: List[str], description: str = "") -> Dict:
+        """Create a new curated collection of fashion items"""
+        db = SessionLocal()
+        try:
+            new_board = StyleBoard(
+                user_id=user_id,
+                name=name,
+                description=description,
+                item_ids=item_ids
+            )
+            db.add(new_board)
+            db.commit()
+            db.refresh(new_board)
+            return {"success": True, "board_id": str(new_board.id), "name": new_board.name}
+        finally:
+            db.close()
+
+    async def get_style_boards(self, user_id: str) -> List[Dict]:
+        """Retrieve all style boards for a user"""
+        db = SessionLocal()
+        try:
+            boards = db.query(StyleBoard).filter(StyleBoard.user_id == user_id).all()
+            return [{"id": str(b.id), "name": b.name, "items": b.item_ids} for b in boards]
+        finally:
+            db.close()
+
 class AIConsultantManager:
-    """Main service for AI Fashion Consultant features (Backwards compatible class name)"""
+    """Main service shim for backwards compatibility"""
     
     def __init__(self):
         self.service = AIConsultantService()
@@ -480,6 +505,12 @@ class AIConsultantManager:
         trends = await self.service.get_fashion_trends(category)
         return {"category": category, "trends": trends} if category else {"all_trends": trends}
 
+    async def create_style_board(self, *args, **kwargs):
+        return await self.service.create_style_board(*args, **kwargs)
+
+    async def get_style_boards(self, *args, **kwargs):
+        return await self.service.get_style_boards(*args, **kwargs)
+
 # Global instance
 ai_consultant_service = AIConsultantService()
 
@@ -488,3 +519,54 @@ async def equip_item_endpoint(user_id: str, item_id: str, equip: bool = True):
 
 async def get_equipped_endpoint(user_id: str):
     return await ai_consultant_service.get_equipped_items(user_id)
+
+async def create_board_endpoint(user_id: str, board_data: dict):
+    return await ai_consultant_service.create_style_board(user_id, board_data.get("name"), board_data.get("item_ids"), board_data.get("description", ""))
+
+async def list_boards_endpoint(user_id: str):
+    return await ai_consultant_service.get_style_boards(user_id)
+
+async def main():
+    ai_service = AIConsultantManager()
+
+    # Create a user profile
+    profile_result = await ai_service.create_user_style_profile(
+        "user_123",
+        "hourglass",
+        170.0,
+        28,
+        ["elegant", "classic"],
+        ["black", "navy", "white"],
+        {"tops": "M", "bottoms": "M", "dresses": "M"},
+        "medium",
+        "work",
+        ["fall", "winter"],
+        ["professional", "elegant"]
+    )
+
+    print("User Profile Creation Result:")
+    print(json.dumps(profile_result, indent=2))
+
+    if profile_result["success"]:
+        # Add items to wardrobe
+        item_result = await ai_service.add_wardrobe_item(
+            "user_123",
+            "Black Blazer",
+            "outerwear",
+            "black",
+            "Zara",
+            ["professional", "elegant", "versatile"]
+        )
+
+        print("\nWardrobe Item Addition Result:")
+        print(json.dumps(item_result, indent=2))
+
+        # Get outfit recommendation
+        outfit_result = await ai_service.get_outfit_recommendation("user_123", "work")
+
+        print("\nOutfit Recommendation:")
+        print(json.dumps(outfit_result, indent=2))
+
+if __name__ == "__main__":
+    import asyncio
+    asyncio.run(main())

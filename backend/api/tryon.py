@@ -52,6 +52,7 @@ class FitAnalysisResponse(BaseModel):
     fit_score: float
     measurement_differences: Dict[str, float]
     size_chart_comparison: Dict[str, Dict[str, float]]
+    fit_heatmap: Optional[Dict[str, str]] = None
     body_type: str
     style_compatibility: float
 
@@ -233,12 +234,16 @@ async def analyze_product_fit(fit_request: FitAnalysisRequest,
         style_compatibility = 0.85  # Placeholder
         
         # Create fit analysis response
+        from backend.ai_models_real import fit_prediction_model
+        heatmap = fit_prediction_model._calculate_fit_heatmap(user_measurements, product_size_chart.get(best_size, {}))
+
         fit_analysis = FitAnalysisResponse(
             recommended_size=best_size or "M",
             confidence=round(confidence, 2),
             fit_score=round(best_score, 2),
             measurement_differences=measurement_differences,
             size_chart_comparison=size_chart_comparison,
+            fit_heatmap=heatmap,
             body_type=user_body_type,
             style_compatibility=round(style_compatibility, 2)
         )

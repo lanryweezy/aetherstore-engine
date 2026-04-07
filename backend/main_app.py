@@ -97,12 +97,24 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
         while True:
             data = await websocket.receive_json()
             # Broadcast message to all users in the room
-            await manager.broadcast(room_id, {
-                "type": "chat",
-                "user_id": user_id,
-                "message": data.get("message"),
-                "timestamp": datetime.now().isoformat()
-            })
+            msg_type = data.get("type", "chat")
+
+            if msg_type == "chat":
+                await manager.broadcast(room_id, {
+                    "type": "chat",
+                    "user_id": user_id,
+                    "message": data.get("message"),
+                    "timestamp": datetime.now().isoformat()
+                })
+            elif msg_type == "transform":
+                # Real-time position/rotation sync for avatars
+                await manager.broadcast(room_id, {
+                    "type": "transform",
+                    "user_id": user_id,
+                    "position": data.get("position"),
+                    "rotation": data.get("rotation"),
+                    "timestamp": datetime.now().isoformat()
+                })
     except WebSocketDisconnect:
         manager.disconnect(room_id, websocket)
         await manager.broadcast(room_id, {

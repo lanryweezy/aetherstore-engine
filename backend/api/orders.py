@@ -215,13 +215,20 @@ async def create_order_endpoint(
 
         # Send Order Confirmation Email
         try:
+            # Safely get brand name
+            brand_name = "Aetherstore Merchant"
+            if order_items_data:
+                first_product = get_product(db, order_items_data[0]["product_id"])
+                if first_product and first_product.brand:
+                    brand_name = first_product.brand.name
+
             await email_service.send_order_confirmation(
                 customer_email=current_user.email,
                 customer_name=current_user.name,
                 order_id=db_order.id,
                 total_amount=db_order.total_amount,
                 order_status=db_order.status,
-                brand_name=product.brand.name if product and product.brand else "Aetherstore Merchant"
+                brand_name=brand_name
             )
         except Exception as e:
             logger.warning(f"Email confirmation failed: {e}")

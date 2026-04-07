@@ -552,8 +552,27 @@ class RealFitPredictionModel:
             "recommended_size": best_size or "M",
             "confidence": round(best_score, 2),
             "size_scores": size_scores,
+            "fit_heatmap": self._calculate_fit_heatmap(user_measurements, size_chart.get(best_size, {})),
             "analysis": "Used weighted importance: Shoulder > Chest > Waist"
         }
+
+    def _calculate_fit_heatmap(self, user: Dict, product: Dict) -> Dict[str, str]:
+        """Detailed breakdown of fit per body region (Perfect, Tight, Loose)"""
+        heatmap = {}
+        for region in ["shoulder_width", "chest", "waist", "hips"]:
+            if region in user and region in product:
+                u_val, p_val = user[region], product[region]
+                diff = p_val - u_val
+
+                # Fashion logic:
+                # - Positive diff = Loose
+                # - Negative diff = Tight
+                # - Near zero = Perfect
+                if abs(diff) < 1.0: heatmap[region] = "perfect"
+                elif diff > 3.0: heatmap[region] = "loose"
+                elif diff < -1.0: heatmap[region] = "tight"
+                else: heatmap[region] = "good"
+        return heatmap
 
 class RealStyleRecommendationModel:
     """Real style recommendation using collaborative filtering and embeddings"""

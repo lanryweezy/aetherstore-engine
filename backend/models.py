@@ -364,3 +364,15 @@ class WardrobeItem(Base):
     style_tags = Column(JSON)
     is_equipped = Column(Boolean, default=False) # Whether it's currently worn by avatar
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class StyleBoard(Base):
+    __tablename__ = "style_boards"
+
+    id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
+    user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
+    name = Column(String(255), nullable=False)
+    description = Column(Text)
+    item_ids = Column(JSON) # List of WardrobeItem or Product IDs
+    is_public = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
