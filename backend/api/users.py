@@ -12,6 +12,7 @@ from auth import authenticate_user, create_access_token, get_password_hash
 from sqlalchemy.orm import Session
 from database import get_db
 from crud import get_user_by_email, create_user
+from email_service import email_service
 
 router = APIRouter()
 
@@ -60,7 +61,15 @@ async def register_user(request: Request, user_in: UserCreate, db: Session = Dep
         )
     user_data = user_in.dict()
     user_data["password_hash"] = get_password_hash(user_data.pop("password"))
-    return create_user(db, user_data=user_data)
+    new_user = create_user(db, user_data=user_data)
+
+    # Background: Send welcome email
+    try:
+        await email_service.send_welcome_email(new_user.email, new_user.name)
+    except Exception as e:
+        print(f"Non-blocking email error: {e}")
+
+    return new_user
 
 @router.post("/login", response_model=Token)
 @limiter.limit("10/minute")

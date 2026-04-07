@@ -76,17 +76,21 @@ class ConnectionManager:
             for connection in self.active_connections[room_id]:
                 await connection.send_json(message)
 
+    def get_occupancy(self, room_id: str) -> int:
+        return len(self.active_connections.get(room_id, []))
+
 manager = ConnectionManager()
 
 @app.websocket("/ws/social/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
     await manager.connect(room_id, websocket)
     try:
-        # Broadcast user joined
+        # Broadcast user joined + occupancy update
         await manager.broadcast(room_id, {
             "type": "presence",
             "user_id": user_id,
             "status": "joined",
+            "occupancy": manager.get_occupancy(room_id),
             "timestamp": datetime.now().isoformat()
         })
 
@@ -105,6 +109,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             "type": "presence",
             "user_id": user_id,
             "status": "left",
+            "occupancy": manager.get_occupancy(room_id),
             "timestamp": datetime.now().isoformat()
         })
 

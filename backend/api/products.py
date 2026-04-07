@@ -7,6 +7,7 @@ from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
 import os
+from sqlalchemy import String
 from sqlalchemy.orm import Session
 from models import Product, ProductImage, Brand, Store, InventoryLog
 from crud import get_product, get_products_by_brand, get_products_by_store, create_product, update_product, delete_product
@@ -219,7 +220,7 @@ async def upload_3d_model(product_id: str, file: UploadFile = File(...),
         file_object.write(await file.read())
 
     # TRIGGER AUTO-OPTIMIZATION
-    from 3d_processing import optimize_3d_model, OptimizationLevel
+    from asset_processor_3d import optimize_3d_model, OptimizationLevel
     try:
         # Decimate mesh and compress textures automatically
         result = optimize_3d_model(raw_path, optimized_path, OptimizationLevel.MEDIUM)
@@ -283,3 +284,37 @@ async def get_low_stock_alerts(threshold: int = 5, brand_id: Optional[str] = Non
         query = query.filter(Product.brand_id == brand_id)
     low_stock_items = query.all()
     return [{"id": item.id, "name": item.name, "stock": item.stock_quantity, "brand_id": item.brand_id} for item in low_stock_items]
+
+@router.get("/search/advanced", response_model=List[ProductResponse])
+async def search_products_advanced(
+    q: Optional[str] = None,
+    min_price: Optional[float] = None,
+    max_price: Optional[float] = None,
+    category: Optional[str] = None,
+    material: Optional[str] = None,
+    color: Optional[str] = None,
+    db: Session = Depends(get_db)
+):
+    """Advanced search with multiple filters and keyword matching"""
+    query = db.query(Product)
+
+    if q:
+        search_filter = (Product.name.ilike(f"%{q}%")) | (Product.description.ilike(f"%{q}%"))
+        query = query.filter(search_filter)
+
+    if min_price is not None:
+        query = query.filter(Product.price >= min_price)
+
+    if max_price is not None:
+        query = query.filter(Product.price <= max_price)
+
+    if category:
+        query = query.filter(Product.category == category)
+
+    if material:
+        query = query.filter(Product.materials.cast(String).ilike(f"%{material}%"))
+
+    if color:
+        query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
+
+    return query.all()

@@ -4,6 +4,7 @@
 import os
 import json
 import numpy as np
+import trimesh
 from typing import Dict, List, Optional, Tuple
 from dataclasses import dataclass
 from enum import Enum
@@ -65,7 +66,6 @@ class ModelProcessor:
     """Service for processing and optimizing 3D models"""
     
     def __init__(self):
-        import numpy as np # Ensure numpy is available
         """Initialize the model processor"""
         self.supported_formats = [".glb", ".gltf", ".obj", ".fbx", ".ply", ".stl"]
         self.optimization_levels = {

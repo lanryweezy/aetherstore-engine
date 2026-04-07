@@ -18,6 +18,7 @@ from crud import (
     remove_item_from_cart, get_brand, get_store
 )
 from payment_service_brand import get_brand_payment_service
+from email_service import email_service
 
 router = APIRouter(prefix="/orders", tags=["orders"])
 logger = logging.getLogger(__name__)
@@ -211,6 +212,20 @@ async def create_order_endpoint(
         
         # Get order items for response
         order_items = db.query(OrderItem).filter(OrderItem.order_id == db_order.id).all()
+
+        # Send Order Confirmation Email
+        try:
+            await email_service.send_order_confirmation(
+                customer_email=current_user.email,
+                customer_name=current_user.name,
+                order_id=db_order.id,
+                total_amount=db_order.total_amount,
+                order_status=db_order.status,
+                brand_name=product.brand.name if product and product.brand else "Aetherstore Merchant"
+            )
+        except Exception as e:
+            logger.warning(f"Email confirmation failed: {e}")
+
         items_response = []
         for item in order_items:
             product = get_product(db, item.product_id)
