@@ -12,16 +12,42 @@ class BabylonEngine {
             return;
         }
 
-        this.engine = new BABYLON.Engine(this.canvas, true);
-        this.scene = new BABYLON.Scene(this.engine);
         this.camera = null;
         this.lights = [];
         this.avatar = null;
         this.remoteAvatars = new Map(); // Store other users in the same room
         this.remoteSounds = new Map(); // Map to hold Babylon Sound objects for WebRTC
         this.physicsEnabled = false;
+        this.lodSystem = null;
 
+        // Provide a promise that resolves when the engine is fully ready
+        this.ready = this.initEngine();
+    }
+
+    async initEngine() {
+        console.log('Initializing WebGPU / WebGL Engine...');
+
+        // Attempt WebGPU first for massive performance gains
+        if (BABYLON.WebGPUEngine.IsSupported) {
+            this.engine = new BABYLON.WebGPUEngine(this.canvas);
+            await this.engine.initAsync();
+            console.log('Successfully initialized WebGPU rendering engine!');
+        } else {
+            console.log('WebGPU not supported on this browser. Falling back to WebGL 2.0');
+            this.engine = new BABYLON.Engine(this.canvas, true);
+        }
+
+        this.scene = new BABYLON.Scene(this.engine);
         this.init();
+
+        // Run render loop
+        this.engine.runRenderLoop(() => {
+            this.scene.render();
+        });
+
+        window.addEventListener('resize', () => {
+            this.engine.resize();
+        });
     }
 
     init() {
@@ -31,6 +57,14 @@ class BabylonEngine {
         if (typeof window.InstancingSystem !== 'undefined') {
             this.instancingSystem = new window.InstancingSystem(this.scene);
             console.log('Babylon.js Instancing System initialized');
+        }
+
+        // Initialize Auto LOD System
+        if (typeof window.AutoLODSystem !== 'undefined') {
+            this.lodSystem = new window.AutoLODSystem(this.scene);
+            // Optionally enable the dynamic framerate optimizer
+            this.lodSystem.enableDynamicSceneOptimizer(60);
+            console.log('Babylon.js Auto LOD System initialized');
         }
 
         // 1. Setup Camera
@@ -55,26 +89,24 @@ class BabylonEngine {
         // 4. Initialize WebXR (VR/AR Readiness)
         this.initXR();
 
-        // 5. Start Render Loop
-        this.engine.runRenderLoop(() => {
-            this.scene.render();
-        });
-
-        window.addEventListener("resize", () => {
-            this.engine.resize();
-        });
-
         console.log('Babylon.js Foundation Ready');
     }
 
     async enablePhysics() {
         try {
-            // Using Havok or Cannon.js for physics
+            // Using Havok for ultra-fast physics and complex cloth simulation
             const gravityVector = new BABYLON.Vector3(0, -9.81, 0);
-            const physicsPlugin = new BABYLON.CannonJSPlugin();
-            this.scene.enablePhysics(gravityVector, physicsPlugin);
-            this.physicsEnabled = true;
-            console.log('Babylon.js Physics Enabled (Cloth readiness: HIGH)');
+
+            // Initialize Havok WASM
+            if (typeof HavokPhysics !== 'undefined') {
+                const havokInstance = await HavokPhysics();
+                const physicsPlugin = new BABYLON.HavokPlugin(true, havokInstance);
+                this.scene.enablePhysics(gravityVector, physicsPlugin);
+                this.physicsEnabled = true;
+                console.log('Babylon.js Havok Physics Enabled (Cloth readiness: ULTRA)');
+            } else {
+                throw new Error("HavokPhysics WASM package not found.");
+            }
         } catch (error) {
             console.warn('Physics initialization failed, falling back to static rendering:', error);
         }
@@ -133,18 +165,25 @@ class BabylonEngine {
     }
 
     async addProductToStore(modelUrl, position, rotation, scaling) {
+        let rootNode;
         if (this.instancingSystem) {
             // High performance instance
-            return this.instancingSystem.addProduct(modelUrl, position, rotation, scaling);
+            rootNode = await this.instancingSystem.addProduct(modelUrl, position, rotation, scaling);
         } else {
             // Fallback to standard loading
             const result = await BABYLON.SceneLoader.ImportMeshAsync("", "", modelUrl, this.scene);
-            const mesh = result.meshes[0];
-            if (position) mesh.position = position;
-            if (rotation) mesh.rotation = rotation;
-            if (scaling) mesh.scaling = scaling;
-            return mesh;
+            rootNode = result.meshes[0];
+            if (position) rootNode.position = position;
+            if (rotation) rootNode.rotation = rotation;
+            if (scaling) rootNode.scaling = scaling;
         }
+
+        // Apply automatic LOD processing to the loaded product
+        if (this.lodSystem && rootNode) {
+            this.lodSystem.applyAutoLOD(rootNode);
+        }
+
+        return rootNode;
     }
 
     applyProportionalScaling(mesh, measurements) {

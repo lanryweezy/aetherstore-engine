@@ -5,8 +5,9 @@
     <title>Babylon.js Core Verification</title>
     <script src="https://cdn.babylonjs.com/babylon.js"></script>
     <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
-    <script src="https://cdn.babylonjs.com/cannon.js"></script>
+    <script src="https://cdn.babylonjs.com/havok/HavokPhysics_umd.js"></script>
     <script src="js/instancing-system.js"></script>
+    <script src="js/auto-lod-system.js"></script>
     <script src="js/babylon-core.js"></script>
     <script src="js/webrtc-manager.js"></script>
     <script src="js/social-manager.js"></script>
@@ -25,9 +26,13 @@
     </div>
     <canvas id="renderCanvas"></canvas>
     <script>
-        document.addEventListener('DOMContentLoaded', () => {
+        document.addEventListener('DOMContentLoaded', async () => {
             window.userId = 'test-user';
             const engine = new AetherBabylon('renderCanvas');
+
+            // Wait for WebGPU/WebGL engine to fully initialize before creating meshes
+            await engine.ready;
+
             window.engineInstance = engine;
 
             // Initialize Social Manager with WebRTC
