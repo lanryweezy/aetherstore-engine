@@ -197,39 +197,6 @@ async def upload_product_image(image_data: ProductImageCreate, current_user = De
     db.refresh(db_image)
     return db_image
 
-def process_3d_model_background(product_id: str, raw_path: str, optimized_path: str):
-    """Background task to optimize 3D model and update the database."""
-    from database import SessionLocal
-    import logging
-    logger = logging.getLogger(__name__)
-
-    try:
-        from asset_processor_3d import optimize_3d_model, OptimizationLevel
-        # Decimate mesh and compress textures automatically
-        result = optimize_3d_model(raw_path, optimized_path, OptimizationLevel.MEDIUM)
-        if result.success:
-            final_path = optimized_path
-            try:
-                os.remove(raw_path) # Clean up raw file
-            except OSError:
-                pass
-        else:
-            final_path = raw_path # Fallback to raw if optimization fails
-            logger.warning(f"3D Optimization failed for {product_id}: {result.error_message}")
-    except Exception as e:
-        final_path = raw_path
-        logger.error(f"Error in 3D pipeline for {product_id}: {e}")
-
-    # Create a fresh database session for the background task
-    db = SessionLocal()
-    try:
-        from crud import update_product
-        update_product(db, product_id, {"model_3d_url": final_path})
-        db.commit()
-    except Exception as e:
-        logger.error(f"Failed to update product {product_id} after optimization: {e}")
-    finally:
-        db.close()
 
 from fastapi import Form
 import json
@@ -291,13 +258,17 @@ async def upload_3d_model(product_id: str,
     # Update product immediately to show the raw file while processing
     update_product(db, product_id, {"model_3d_url": raw_path})
 
-    # TRIGGER AUTO-OPTIMIZATION IN BACKGROUND
-    background_tasks.add_task(process_3d_model_background, product_id, raw_path, optimized_path)
+    # TRIGGER AUTO-OPTIMIZATION IN CELERY BACKGROUND WORKER
+    from tasks import process_3d_model_task
+
+    # We delay the task, putting it into the Redis queue for the Celery worker to pick up
+    task = process_3d_model_task.delay(product_id, raw_path, optimized_path)
 
     return {
         "location": raw_path,
         "status": "processing",
-        "message": "3D model uploaded and is being optimized in the background."
+        "task_id": task.id,
+        "message": "3D model uploaded and is queued for optimization in the background."
     }
 
 @router.get("/{product_id}/images/", response_model=List[ProductImageResponse])
