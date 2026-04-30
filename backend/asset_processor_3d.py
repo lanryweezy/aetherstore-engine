@@ -12,7 +12,8 @@ import logging
 from pathlib import Path
 import trimesh
 import PIL.Image as Image
-from .blender_processor import blender_processor
+from blender_processor import blender_processor
+from gltf_processor import gltf_processor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -203,8 +204,23 @@ class ModelProcessor:
             completed_steps = [ProcessingStep.VALIDATION]
             params = self.optimization_levels[optimization_level]
             
-            use_trimesh = True
-            if blender_processor.is_blender_available():
+            use_fallback = True
+            if gltf_processor.is_available():
+                logger.info("Using gltf-transform for optimization")
+                # This is extremely fast and handles PBR materials seamlessly
+                success = gltf_processor.optimize_model(input_file, output_file)
+                if success:
+                    completed_steps.extend([
+                        ProcessingStep.DECOMPRESSION,
+                        ProcessingStep.CLEANING,
+                        ProcessingStep.OPTIMIZATION,
+                        ProcessingStep.COMPRESSION
+                    ])
+                    use_fallback = False
+                else:
+                    logger.warning("gltf-transform optimization failed. Falling back.")
+
+            if use_fallback and blender_processor.is_blender_available():
                 logger.info("Using Blender for optimization")
                 # Optimize using Blender
                 success = blender_processor.optimize_model(input_file, output_file, params["decimation_ratio"])
@@ -215,11 +231,11 @@ class ModelProcessor:
                         ProcessingStep.OPTIMIZATION,
                         ProcessingStep.COMPRESSION
                     ])
-                    use_trimesh = False
+                    use_fallback = False
                 else:
                     logger.warning("Blender optimization failed. Falling back to Trimesh.")
 
-            if use_trimesh:
+            if use_fallback:
                 logger.info("Using Trimesh for optimization")
                 # Load the model
                 mesh = trimesh.load(input_file, force='mesh')
@@ -246,9 +262,8 @@ class ModelProcessor:
             metadata.processing_time = time.time() - start_time
             completed_steps.append(ProcessingStep.METADATA_EXTRACTION)
             
-            # Generate thumbnails
-            self._generate_thumbnails(output_file)
-            completed_steps.append(ProcessingStep.THUMBNAIL_GENERATION)
+            # Skip Backend Thumbnail generation as it will be handled by the frontend
+            logger.info(f"Skipping backend thumbnail generation for {input_file} - now handled by frontend")
             
             result = ProcessingResult(
                 success=True,
