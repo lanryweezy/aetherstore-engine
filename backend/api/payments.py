@@ -176,10 +176,11 @@ async def verify_payment(
                     order_id = result["metadata"]["order_id"]
                     update_order_status(db, order_id, "paid")
                     # Update payment status
-                    order = get_order(db, order_id)
-                    if order:
-                        order.payment_status = "paid"
-                        db.commit()
+                    try:
+                        order = get_order(db, order_id)
+                        if order:
+                            order.payment_status = "paid"
+                            db.commit()
                     finally:
                         db.close()
             
@@ -387,8 +388,8 @@ async def refund_payment(
         if result.get("success"):
             # Update order status
             # Find order by payment_id (would need to store this)
-            # For now, return success
-        
+            pass
+
         return result
     except HTTPException:
         raise
