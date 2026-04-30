@@ -3,7 +3,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from database import get_db
 from models import UserLoyalty, LoyaltyTransaction
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 
@@ -16,8 +16,7 @@ class LoyaltyResponse(BaseModel):
     total_earned: int
     last_activity: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class TransactionResponse(BaseModel):
     id: str
@@ -25,8 +24,7 @@ class TransactionResponse(BaseModel):
     reason: str
     timestamp: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.get("/{user_id}", response_model=LoyaltyResponse)
 async def get_user_loyalty(user_id: str, db: Session = Depends(get_db)):

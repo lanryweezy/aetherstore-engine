@@ -7,6 +7,7 @@ from typing import Dict, Any, Optional
 from fastapi import HTTPException, status
 import logging
 from config import settings
+from circuit_breaker import stripe_circuit
 
 logger = logging.getLogger(__name__)
 
@@ -24,6 +25,7 @@ class PaymentService:
         self.paystack_public_key = settings.PAYSTACK_PUBLIC_KEY
         self.paystack_base_url = "https://api.paystack.co"
     
+    @stripe_circuit
     async def create_payment_intent_stripe(
         self, 
         amount: float, 
@@ -67,6 +69,7 @@ class PaymentService:
                 detail=f"Error creating payment intent: {str(e)}"
             )
     
+    @stripe_circuit
     async def confirm_payment_stripe(self, payment_intent_id: str) -> Dict[str, Any]:
         """Confirm a Stripe payment"""
         try:

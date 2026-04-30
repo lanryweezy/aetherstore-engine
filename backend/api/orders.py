@@ -2,7 +2,7 @@
 # Order management API endpoints
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -58,8 +58,7 @@ class OrderResponse(BaseModel):
     updated_at: Optional[datetime] = None
     items: List[Dict[str, Any]] = []
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class OrderStatusUpdate(BaseModel):
     status: str  # pending, confirmed, paid, shipped, delivered, cancelled

@@ -2,7 +2,7 @@
 # Product management API endpoints for Aetherstore Engine
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -76,8 +76,7 @@ class ProductResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductImageCreate(BaseModel):
     product_id: str
@@ -93,8 +92,7 @@ class ProductImageResponse(BaseModel):
     is_primary: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Product endpoints
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
@@ -388,8 +386,7 @@ class ReviewResponse(BaseModel):
     helpful_count: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/{product_id}/reviews", response_model=ReviewResponse)
 async def create_review(product_id: str, review_in: ReviewCreate, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
