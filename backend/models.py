@@ -421,3 +421,14 @@ class ProductReview(Base):
     is_verified_purchase = Column(Boolean, default=False)
     helpful_count = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+class ProcessedWebhook(Base):
+    """
+    Stores successfully processed webhook event IDs to ensure idempotency.
+    If Stripe/Paystack retries an event, we skip it if the ID exists here.
+    """
+    __tablename__ = "processed_webhooks"
+
+    id = Column(String(255), primary_key=True) # The specific event ID from Stripe/Paystack
+    provider = Column(String(50), nullable=False) # 'stripe', 'paystack'
+    created_at = Column(DateTime(timezone=True), server_default=func.now())

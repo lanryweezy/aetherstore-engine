@@ -16,6 +16,9 @@ from slowapi.errors import RateLimitExceeded
 from monitoring_service import monitoring_service, monitoring_middleware
 from email_service import email_service
 import logging
+import asyncio
+import json
+import redis.asyncio as redis
 
 # Configure logging
 logging.basicConfig(level=getattr(logging, settings.LOG_LEVEL))
@@ -61,31 +64,83 @@ class ConnectionManager:
     def __init__(self):
         # Maps room_id -> user_id -> WebSocket
         self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
+        # Redis client for Pub/Sub
+        self.redis = redis.from_url(settings.REDIS_URL, decode_responses=True)
+        # Background tasks to listen to Redis channels
+        self.pubsub_tasks: Dict[str, asyncio.Task] = {}
+
+    async def _redis_listener(self, room_id: str):
+        """Background task that listens to Redis for messages sent to this room by other server nodes."""
+        pubsub = self.redis.pubsub()
+        await pubsub.subscribe(room_id)
+        logger.info(f"Subscribed to Redis channel for room: {room_id}")
+
+        try:
+            async for message in pubsub.listen():
+                if message['type'] == 'message':
+                    data = json.loads(message['data'])
+                    target_user_id = data.get("internal_target_user_id")
+                    exclude_user_id = data.get("internal_exclude_user_id")
+
+                    # Clean internal routing fields before sending to clients
+                    payload = {k: v for k, v in data.items() if not k.startswith("internal_")}
+
+                    if target_user_id:
+                        # Direct personal message routing
+                        if room_id in self.active_connections and target_user_id in self.active_connections[room_id]:
+                            await self.active_connections[room_id][target_user_id].send_json(payload)
+                    else:
+                        # Broadcast routing
+                        if room_id in self.active_connections:
+                            for uid, connection in self.active_connections[room_id].items():
+                                if uid != exclude_user_id:
+                                    try:
+                                        await connection.send_json(payload)
+                                    except Exception as e:
+                                        logger.error(f"Error sending message to {uid} in {room_id}: {e}")
+        except asyncio.CancelledError:
+            await pubsub.unsubscribe(room_id)
+            logger.info(f"Unsubscribed from Redis channel for room: {room_id}")
 
     async def connect(self, room_id: str, user_id: str, websocket: WebSocket):
         await websocket.accept()
         if room_id not in self.active_connections:
             self.active_connections[room_id] = {}
-        self.active_connections[room_id][user_id] = websocket
+            # Start a Redis listener for this room if one doesn't exist on this node
+            if room_id not in self.pubsub_tasks:
+                self.pubsub_tasks[room_id] = asyncio.create_task(self._redis_listener(room_id))
 
-    def disconnect(self, room_id: str, user_id: str):
+        self.active_connections[room_id][user_id] = websocket
+        # Increment a Redis counter for global occupancy
+        await self.redis.hincrby("room_occupancy", room_id, 1)
+
+    async def disconnect(self, room_id: str, user_id: str):
         if room_id in self.active_connections and user_id in self.active_connections[room_id]:
             del self.active_connections[room_id][user_id]
+            # Decrement global occupancy
+            await self.redis.hincrby("room_occupancy", room_id, -1)
+
             if not self.active_connections[room_id]:
                 del self.active_connections[room_id]
+                # Stop Redis listener for this room to save resources
+                if room_id in self.pubsub_tasks:
+                    self.pubsub_tasks[room_id].cancel()
+                    del self.pubsub_tasks[room_id]
 
     async def broadcast(self, room_id: str, message: dict, exclude_user_id: str = None):
-        if room_id in self.active_connections:
-            for uid, connection in self.active_connections[room_id].items():
-                if uid != exclude_user_id:
-                    await connection.send_json(message)
+        """Publish a broadcast message to Redis, so all server nodes receive it."""
+        message["internal_exclude_user_id"] = exclude_user_id
+        await self.redis.publish(room_id, json.dumps(message))
 
     async def send_personal_message(self, room_id: str, target_user_id: str, message: dict):
-        if room_id in self.active_connections and target_user_id in self.active_connections[room_id]:
-            await self.active_connections[room_id][target_user_id].send_json(message)
+        """Publish a direct message to Redis, so the node holding the target user can send it."""
+        message["internal_target_user_id"] = target_user_id
+        await self.redis.publish(room_id, json.dumps(message))
 
-    def get_occupancy(self, room_id: str) -> int:
-        return len(self.active_connections.get(room_id, {}))
+    async def get_occupancy(self, room_id: str) -> int:
+        """Fetch the global occupancy count across all server nodes."""
+        val = await self.redis.hget("room_occupancy", room_id)
+        return int(val) if val else 0
 
 manager = ConnectionManager()
 
@@ -98,7 +153,7 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             "type": "presence",
             "user_id": user_id,
             "status": "joined",
-            "occupancy": manager.get_occupancy(room_id),
+            "occupancy": await manager.get_occupancy(room_id),
             "timestamp": datetime.now().isoformat()
         }, exclude_user_id=user_id)
 
@@ -134,12 +189,12 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                     })
 
     except WebSocketDisconnect:
-        manager.disconnect(room_id, user_id)
+        await manager.disconnect(room_id, user_id)
         await manager.broadcast(room_id, {
             "type": "presence",
             "user_id": user_id,
             "status": "left",
-            "occupancy": manager.get_occupancy(room_id),
+            "occupancy": await manager.get_occupancy(room_id),
             "timestamp": datetime.now().isoformat()
         })
 

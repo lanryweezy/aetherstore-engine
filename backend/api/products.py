@@ -137,14 +137,29 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
         query = query.filter(Product.store_id == store_id)
     if category:
         query = query.filter(Product.category == category)
-    return query.offset(skip).limit(limit).all()
+
+    results = query.offset(skip).limit(limit).all()
+
+    # Sign URLs for list results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
+
+from storage_service import storage_service
 
 @router.get("/{product_id}", response_model=ProductResponse)
 async def read_product(product_id: str, db: Session = Depends(get_db)):
-    """Get product by ID"""
+    """Get product by ID and securely sign the 3D model URL"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # Generate pre-signed secure CDN URL for the heavy 3D asset
+    if db_product.model_3d_url:
+        db_product.model_3d_url = storage_service.get_presigned_url(db_product.model_3d_url)
+
     return db_product
 
 @router.put("/{product_id}", response_model=ProductResponse)
@@ -347,7 +362,14 @@ async def search_products_advanced(
     if color:
         query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
 
-    return query.all()
+    results = query.all()
+
+    # Sign URLs for search results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
 
 # Social Proof & Reviews System
 from models import ProductReview
