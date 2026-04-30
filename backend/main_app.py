@@ -59,31 +59,39 @@ from typing import Dict, List
 
 class ConnectionManager:
     def __init__(self):
-        self.active_connections: Dict[str, List[WebSocket]] = {}
+        # Maps room_id -> user_id -> WebSocket
+        self.active_connections: Dict[str, Dict[str, WebSocket]] = {}
 
-    async def connect(self, room_id: str, websocket: WebSocket):
+    async def connect(self, room_id: str, user_id: str, websocket: WebSocket):
         await websocket.accept()
         if room_id not in self.active_connections:
-            self.active_connections[room_id] = []
-        self.active_connections[room_id].append(websocket)
+            self.active_connections[room_id] = {}
+        self.active_connections[room_id][user_id] = websocket
 
-    def disconnect(self, room_id: str, websocket: WebSocket):
-        if room_id in self.active_connections:
-            self.active_connections[room_id].remove(websocket)
+    def disconnect(self, room_id: str, user_id: str):
+        if room_id in self.active_connections and user_id in self.active_connections[room_id]:
+            del self.active_connections[room_id][user_id]
+            if not self.active_connections[room_id]:
+                del self.active_connections[room_id]
 
-    async def broadcast(self, room_id: str, message: dict):
+    async def broadcast(self, room_id: str, message: dict, exclude_user_id: str = None):
         if room_id in self.active_connections:
-            for connection in self.active_connections[room_id]:
-                await connection.send_json(message)
+            for uid, connection in self.active_connections[room_id].items():
+                if uid != exclude_user_id:
+                    await connection.send_json(message)
+
+    async def send_personal_message(self, room_id: str, target_user_id: str, message: dict):
+        if room_id in self.active_connections and target_user_id in self.active_connections[room_id]:
+            await self.active_connections[room_id][target_user_id].send_json(message)
 
     def get_occupancy(self, room_id: str) -> int:
-        return len(self.active_connections.get(room_id, []))
+        return len(self.active_connections.get(room_id, {}))
 
 manager = ConnectionManager()
 
 @app.websocket("/ws/social/{room_id}/{user_id}")
 async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
-    await manager.connect(room_id, websocket)
+    await manager.connect(room_id, user_id, websocket)
     try:
         # Broadcast user joined + occupancy update
         await manager.broadcast(room_id, {
@@ -92,11 +100,10 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
             "status": "joined",
             "occupancy": manager.get_occupancy(room_id),
             "timestamp": datetime.now().isoformat()
-        })
+        }, exclude_user_id=user_id)
 
         while True:
             data = await websocket.receive_json()
-            # Broadcast message to all users in the room
             msg_type = data.get("type", "chat")
 
             if msg_type == "chat":
@@ -113,11 +120,21 @@ async def websocket_endpoint(websocket: WebSocket, room_id: str, user_id: str):
                     "user_id": user_id,
                     "position": data.get("position"),
                     "rotation": data.get("rotation"),
-                    "animation_state": data.get("animation_state"), # Syncing animation state (e.g., 'idle', 'walk', 'run')
+                    "animation_state": data.get("animation_state"),
                     "timestamp": datetime.now().isoformat()
-                })
+                }, exclude_user_id=user_id)
+            elif msg_type in ["webrtc_offer", "webrtc_answer", "webrtc_ice_candidate"]:
+                # WebRTC Signaling - Send directly to the target peer
+                target_user = data.get("target_user_id")
+                if target_user:
+                    await manager.send_personal_message(room_id, target_user, {
+                        "type": msg_type,
+                        "user_id": user_id, # The sender
+                        "payload": data.get("payload")
+                    })
+
     except WebSocketDisconnect:
-        manager.disconnect(room_id, websocket)
+        manager.disconnect(room_id, user_id)
         await manager.broadcast(room_id, {
             "type": "presence",
             "user_id": user_id,

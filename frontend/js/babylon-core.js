@@ -17,7 +17,8 @@ class BabylonEngine {
         this.camera = null;
         this.lights = [];
         this.avatar = null;
-        this.remoteAvatars = new Map(); # Store other users in the same room
+        this.remoteAvatars = new Map(); // Store other users in the same room
+        this.remoteSounds = new Map(); // Map to hold Babylon Sound objects for WebRTC
         this.physicsEnabled = false;
 
         this.init();
@@ -212,6 +213,68 @@ class BabylonEngine {
             this.remoteAvatars.delete(userId);
             console.log('Removed remote avatar:', userId);
         }
+
+        const sound = this.remoteSounds.get(userId);
+        if (sound) {
+            sound.dispose();
+            this.remoteSounds.delete(userId);
+        }
+    }
+
+    /**
+     * Attach a WebRTC Audio MediaStream to a 3D remote avatar for Spatial Audio
+     * @param {string} userId - The ID of the remote user
+     * @param {MediaStream} mediaStream - The WebRTC Audio stream
+     */
+    attachSpatialAudioStream(userId, mediaStream) {
+        // Ensure AudioEngine is initialized
+        if (!BABYLON.Engine.audioEngine.unlocked) {
+            BABYLON.Engine.audioEngine.unlock();
+        }
+
+        const remoteMesh = this.remoteAvatars.get(userId);
+        if (!remoteMesh) {
+            console.log(`Delaying audio attachment, spawning avatar for ${userId} first.`);
+            this.updateRemoteAvatar(userId, {
+                position: {x: 0, y: 0, z: 0},
+                rotation: {x: 0, y: 0, z: 0}
+            });
+            // Re-fetch the newly created mesh
+            const newMesh = this.remoteAvatars.get(userId);
+            if (!newMesh) return;
+        }
+
+        // Clean up any existing sound for this user
+        if (this.remoteSounds.has(userId)) {
+            this.remoteSounds.get(userId).dispose();
+        }
+
+        // Create a Babylon Sound from the MediaStream
+        // Note: Babylon.js Sound supports MediaStream natively
+        const sound = new BABYLON.Sound(
+            "voice_" + userId,
+            mediaStream,
+            this.scene,
+            null,
+            {
+                spatialSound: true,
+                maxDistance: 20,    // Sound completely fades out at 20 units
+                rolloffFactor: 1.5, // How fast the sound fades out
+                loop: true,
+                autoplay: true
+            }
+        );
+
+        // Attach the sound to the user's 3D mesh!
+        // As the mesh moves via WebSocket updates, the sound source will follow it.
+        // We use either the newly created mesh or the existing one
+        const meshToAttach = remoteMesh || this.remoteAvatars.get(userId);
+        if(meshToAttach){
+            sound.attachToMesh(meshToAttach);
+        }
+
+        this.remoteSounds.set(userId, sound);
+        console.log(`Spatial audio attached to remote avatar: ${userId}`);
     }
 
     /**
