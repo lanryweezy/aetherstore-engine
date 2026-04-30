@@ -178,10 +178,11 @@ async def verify_payment(
                     # Update payment status
                     order = get_order(db, order_id)
                     if order:
-                        order.payment_status = "paid"
-                        db.commit()
-                    finally:
-                        db.close()
+                        try:
+                            order.payment_status = "paid"
+                            db.commit()
+                        finally:
+                            pass # We don't want to close db session here since it's injected via Depends
             
             return PaymentVerificationResponse(
                 success=result.get("success", False),
@@ -388,6 +389,7 @@ async def refund_payment(
             # Update order status
             # Find order by payment_id (would need to store this)
             # For now, return success
+            pass
         
         return result
     except HTTPException:
