@@ -40,6 +40,12 @@ class BabylonEngine {
         this.scene = new BABYLON.Scene(this.engine);
         this.init();
 
+        // Apply hardware profiling to automatically scale performance
+        if (typeof window.DeviceProfiler !== 'undefined') {
+            const profiler = new window.DeviceProfiler(this.engine, this.scene);
+            profiler.applyOptimalSettings();
+        }
+
         // Run render loop
         this.engine.runRenderLoop(() => {
             this.scene.render();
@@ -323,67 +329,66 @@ class BabylonEngine {
     applyLightingPreset(presetName) {
         console.log(`Applying Lighting Preset: ${presetName}`);
 
-        // Clear existing lights
+        // Clear existing lights and environment
         this.lights.forEach(light => light.dispose());
         this.lights = [];
+        if (this.scene.environmentTexture) {
+            this.scene.environmentTexture.dispose();
+            this.scene.environmentTexture = null;
+        }
+
+        // Always add a baseline HDRI environment map for high-quality PBR Image-Based Lighting (IBL)
+        // This is insanely cheap for the GPU and provides photorealistic reflections on materials like leather/silk.
+        // We use a default env map provided by Babylon.js for rapid integration
+        const envTexture = BABYLON.CubeTexture.CreateFromPrefilteredData("https://environment.babylonjs.com/environment.env", this.scene);
+        this.scene.environmentTexture = envTexture;
 
         switch(presetName) {
             case 'cinematic':
+                this.scene.environmentIntensity = 0.5;
                 const keyLight = new BABYLON.DirectionalLight("KeyLight", new BABYLON.Vector3(-1, -2, -1), this.scene);
                 keyLight.position = new BABYLON.Vector3(5, 10, 5);
-                keyLight.intensity = 1.2;
-
-                const fillLight = new BABYLON.HemisphericLight("FillLight", new BABYLON.Vector3(0, 1, 0), this.scene);
-                fillLight.intensity = 0.4;
-                fillLight.groundColor = new BABYLON.Color3(0.1, 0.1, 0.2);
-
-                this.lights.push(keyLight, fillLight);
+                keyLight.intensity = 1.5;
+                this.lights.push(keyLight);
                 break;
 
             case 'neon':
+                this.scene.environmentIntensity = 0.1; // Darken env map for neon to pop
                 const neon1 = new BABYLON.PointLight("Neon1", new BABYLON.Vector3(-3, 2, 0), this.scene);
                 neon1.diffuse = new BABYLON.Color3(1, 0, 1); // Pink
-                neon1.intensity = 2;
+                neon1.intensity = 5;
 
                 const neon2 = new BABYLON.PointLight("Neon2", new BABYLON.Vector3(3, 2, 0), this.scene);
                 neon2.diffuse = new BABYLON.Color3(0, 1, 1); // Cyan
-                neon2.intensity = 2;
-
-                const ambient = new BABYLON.HemisphericLight("Ambient", new BABYLON.Vector3(0, 1, 0), this.scene);
-                ambient.intensity = 0.2;
-
-                this.lights.push(neon1, neon2, ambient);
+                neon2.intensity = 5;
+                this.lights.push(neon1, neon2);
                 break;
 
             case 'sunlight':
+                this.scene.environmentIntensity = 1.0;
                 const sun = new BABYLON.DirectionalLight("Sun", new BABYLON.Vector3(1, -2, 1), this.scene);
-                sun.intensity = 3;
+                sun.intensity = 2;
                 sun.diffuse = new BABYLON.Color3(1, 1, 0.9);
-
-                const sky = new BABYLON.HemisphericLight("Sky", new BABYLON.Vector3(0, 1, 0), this.scene);
-                sky.intensity = 0.6;
-                sky.diffuse = new BABYLON.Color3(0.7, 0.8, 1);
-
-                this.lights.push(sun, sky);
+                this.lights.push(sun);
                 break;
 
             case 'studio':
             default:
-                const hemiLight = new BABYLON.HemisphericLight("HemiLight", new BABYLON.Vector3(0, 1, 0), this.scene);
-                hemiLight.intensity = 0.8;
-
-                const pointLight = new BABYLON.PointLight("StudioPoint", new BABYLON.Vector3(0, 5, 0), this.scene);
-                pointLight.intensity = 0.5;
-
-                this.lights.push(hemiLight, pointLight);
+                // Studio relies almost entirely on the beautiful HDRI reflections
+                this.scene.environmentIntensity = 1.2;
+                // Just a subtle directional light to cast shadows
+                const studioLight = new BABYLON.DirectionalLight("StudioDir", new BABYLON.Vector3(0.5, -2, 0.5), this.scene);
+                studioLight.intensity = 0.5;
+                this.lights.push(studioLight);
                 break;
         }
 
-        // Enable shadows for the main light if it's directional
+        // Enable shadows for the main directional light
         const mainLight = this.lights.find(l => l instanceof BABYLON.DirectionalLight);
         if (mainLight) {
             const shadowGenerator = new BABYLON.ShadowGenerator(1024, mainLight);
             shadowGenerator.useBlurExponentialShadowMap = true;
+            shadowGenerator.blurKernel = 32;
             this.shadowGenerator = shadowGenerator;
         }
     }
