@@ -178,11 +178,8 @@ async def verify_payment(
                     # Update payment status
                     order = get_order(db, order_id)
                     if order:
-                        try:
-                            order.payment_status = "paid"
-                            db.commit()
-                        finally:
-                            pass # We don't want to close db session here since it's injected via Depends
+                        order.payment_status = "paid"
+                        db.commit()
             
             return PaymentVerificationResponse(
                 success=result.get("success", False),

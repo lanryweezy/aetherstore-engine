@@ -270,7 +270,12 @@ async def upload_3d_model(product_id: str,
             thumb_dir = Path(raw_path).parent / "thumbnails"
             thumb_dir.mkdir(exist_ok=True)
 
+            valid_views = ["front", "side", "top", "iso"]
+
             for view_name, base64_data in thumbs_data.items():
+                if view_name not in valid_views:
+                    continue
+
                 if base64_data and base64_data.startswith("data:image"):
                     # Extract the base64 string
                     header, encoded = base64_data.split(",", 1)

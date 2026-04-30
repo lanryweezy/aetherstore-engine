@@ -26,6 +26,12 @@ class BabylonEngine {
     init() {
         console.log('Initializing Babylon.js Engine Foundation...');
 
+        // Initialize Instancing System
+        if (typeof window.InstancingSystem !== 'undefined') {
+            this.instancingSystem = new window.InstancingSystem(this.scene);
+            console.log('Babylon.js Instancing System initialized');
+        }
+
         // 1. Setup Camera
         this.camera = new BABYLON.ArcRotateCamera(
             "MainCamera",
@@ -123,6 +129,21 @@ class BabylonEngine {
 
             return result;
         });
+    }
+
+    async addProductToStore(modelUrl, position, rotation, scaling) {
+        if (this.instancingSystem) {
+            // High performance instance
+            return this.instancingSystem.addProduct(modelUrl, position, rotation, scaling);
+        } else {
+            // Fallback to standard loading
+            const result = await BABYLON.SceneLoader.ImportMeshAsync("", "", modelUrl, this.scene);
+            const mesh = result.meshes[0];
+            if (position) mesh.position = position;
+            if (rotation) mesh.rotation = rotation;
+            if (scaling) mesh.scaling = scaling;
+            return mesh;
+        }
     }
 
     applyProportionalScaling(mesh, measurements) {
