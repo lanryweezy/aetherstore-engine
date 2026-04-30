@@ -124,9 +124,22 @@ class BabylonEngine {
     async initXR() {
         try {
             this.xrHelper = await this.scene.createDefaultXRExperienceAsync({
-                floorMeshes: [] # To be populated by store environment
+                uiOptions: {
+                    sessionMode: "immersive-ar",
+                    referenceSpaceType: "local-floor"
+                },
+                optionalFeatures: true
             });
-            console.log('Babylon.js WebXR Initialized');
+
+            // Enable AR Pass-through (Background Remover)
+            // This hides the virtual store environment and displays the user's real camera feed
+            const featuresManager = this.xrHelper.baseExperience.featuresManager;
+            featuresManager.enableFeature(BABYLON.WebXRBackgroundRemover.Name);
+
+            // Enable Hit Test to place 3D clothing on physical real-world surfaces
+            featuresManager.enableFeature(BABYLON.WebXRHitTest.Name, "latest");
+
+            console.log('Babylon.js WebXR (AR Pass-through) Initialized');
         } catch (e) {
             console.warn('WebXR not supported in this environment:', e);
         }
@@ -190,6 +203,73 @@ class BabylonEngine {
         }
 
         return rootNode;
+    }
+
+    /**
+     * Smoothly animate a product from its current location (e.g., a store rack)
+     * onto the user's avatar.
+     * @param {BABYLON.Mesh} productNode - The root node of the 3D product.
+     * @param {BABYLON.Vector3} targetPosition - Where the product should land on the avatar.
+     * @param {BABYLON.Vector3} targetRotation - How the product should be oriented.
+     * @param {BABYLON.Vector3} targetScaling - The final scaling of the product.
+     * @param {number} durationSeconds - How long the animation takes.
+     */
+    animateEquipProduct(productNode, targetPosition, targetRotation, targetScaling, durationSeconds = 1.0) {
+        const frameRate = 60;
+        const totalFrames = frameRate * durationSeconds;
+
+        // Position Animation
+        const animPosition = new BABYLON.Animation(
+            "equipPosAnim",
+            "position",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animPosition.setKeys([
+            { frame: 0, value: productNode.position.clone() },
+            { frame: totalFrames, value: targetPosition }
+        ]);
+
+        // Rotation Animation
+        const animRotation = new BABYLON.Animation(
+            "equipRotAnim",
+            "rotation",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animRotation.setKeys([
+            { frame: 0, value: productNode.rotation.clone() },
+            { frame: totalFrames, value: targetRotation }
+        ]);
+
+        // Scaling Animation
+        const animScaling = new BABYLON.Animation(
+            "equipScaleAnim",
+            "scaling",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animScaling.setKeys([
+            { frame: 0, value: productNode.scaling.clone() },
+            { frame: totalFrames, value: targetScaling }
+        ]);
+
+        // Apply easing function for smooth interpolation (EaseInOut)
+        const easingFunction = new BABYLON.CubicEase();
+        easingFunction.setEasingMode(BABYLON.EasingFunction.EASINGMODE_EASEINOUT);
+        animPosition.setEasingFunction(easingFunction);
+        animRotation.setEasingFunction(easingFunction);
+        animScaling.setEasingFunction(easingFunction);
+
+        productNode.animations.push(animPosition);
+        productNode.animations.push(animRotation);
+        productNode.animations.push(animScaling);
+
+        console.log(`Animating Virtual Try-On for ${productNode.name}`);
+        this.scene.beginAnimation(productNode, 0, totalFrames, false);
     }
 
     applyProportionalScaling(mesh, measurements) {
@@ -383,12 +463,18 @@ class BabylonEngine {
                 break;
         }
 
-        // Enable shadows for the main directional light
+        // Enable cinematic soft shadows for the main directional light
         const mainLight = this.lights.find(l => l instanceof BABYLON.DirectionalLight);
         if (mainLight) {
-            const shadowGenerator = new BABYLON.ShadowGenerator(1024, mainLight);
-            shadowGenerator.useBlurExponentialShadowMap = true;
-            shadowGenerator.blurKernel = 32;
+            // Use CascadedShadowGenerator for massive quality improvements, especially in large stores
+            const shadowGenerator = new BABYLON.CascadedShadowGenerator(2048, mainLight);
+            shadowGenerator.usePercentageCloserFiltering = true; // PCF provides excellent soft edges
+            shadowGenerator.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+
+            // Enable Contact Shadows for fine-detail micro-occlusion (like wrinkles in cloth)
+            shadowGenerator.useContactShadow = true;
+            shadowGenerator.contactShadowDistance = 0.1;
+
             this.shadowGenerator = shadowGenerator;
         }
     }
