@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Aetherstore Engine - Upload Product</title>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
+    <style>
+        body { font-family: sans-serif; padding: 2rem; max-width: 800px; margin: 0 auto; }
+        .form-group { margin-bottom: 1rem; }
+        .form-group label { display: block; margin-bottom: 0.5rem; }
+        .thumbnails-preview { display: flex; gap: 1rem; margin-top: 1rem; flex-wrap: wrap; }
+        .thumbnail-container { text-align: center; border: 1px solid #ccc; padding: 0.5rem; border-radius: 4px; }
+        .thumbnail-container img { width: 128px; height: 128px; display: block; }
+        .thumbnail-container span { font-size: 0.8rem; color: #666; }
+        button { padding: 0.5rem 1rem; background-color: #007bff; color: white; border: none; border-radius: 4px; cursor: pointer; }
+        button:disabled { background-color: #ccc; }
+        #status { margin-top: 1rem; font-weight: bold; }
+    </style>
+</head>
+<body>
+    <h1>Upload 3D Product</h1>
+    <form id="uploadForm">
+        <div class="form-group">
+            <label for="productId">Product ID</label>
+            <input type="text" id="productId" required>
+        </div>
+        <div class="form-group">
+            <label for="modelFile">3D Model File (.glb, .gltf)</label>
+            <input type="file" id="modelFile" accept=".glb,.gltf" required>
+        </div>
+
+        <div id="thumbnailSection" style="display: none;">
+            <h3>Generated Thumbnails</h3>
+            <p><small>Thumbnails generated instantly on your device via GPU.</small></p>
+            <div class="thumbnails-preview" id="thumbnailsContainer"></div>
+        </div>
+
+        <button type="submit" id="uploadBtn" disabled>Upload Product</button>
+    </form>
+
+    <div id="status"></div>
+
+    <!-- Include our client-side generator -->
+    <script src="../../js/thumbnail-generator.js"></script>
+    <script>
+        const fileInput = document.getElementById('modelFile');
+        const productIdInput = document.getElementById('productId');
+        const uploadForm = document.getElementById('uploadForm');
+        const uploadBtn = document.getElementById('uploadBtn');
+        const thumbnailsContainer = document.getElementById('thumbnailsContainer');
+        const thumbnailSection = document.getElementById('thumbnailSection');
+        const statusDiv = document.getElementById('status');
+
+        let generatedThumbnails = null;
+        let selectedFile = null;
+
+        // Initialize the thumbnail generator
+        const generator = new window.ClientThumbnailGenerator();
+
+        fileInput.addEventListener('change', async (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            selectedFile = file;
+            uploadBtn.disabled = true;
+            statusDiv.textContent = "Generating thumbnails...";
+            thumbnailSection.style.display = "block";
+            thumbnailsContainer.innerHTML = "";
+
+            try {
+                // Instantly generate the thumbnails via WebGL/BabylonJS
+                generatedThumbnails = await generator.generateFromUpload(file);
+
+                // Display them
+                Object.entries(generatedThumbnails).forEach(([viewName, base64Url]) => {
+                    const div = document.createElement('div');
+                    div.className = 'thumbnail-container';
+                    div.innerHTML = `
+                        <img src="${base64Url}" alt="${viewName}">
+                        <span>${viewName.toUpperCase()}</span>
+                    `;
+                    thumbnailsContainer.appendChild(div);
+                });
+
+                statusDiv.textContent = "Thumbnails ready. Ready to upload.";
+                uploadBtn.disabled = false;
+
+            } catch (err) {
+                statusDiv.textContent = "Error generating thumbnails: " + err.message;
+                console.error(err);
+                // Still allow upload without thumbnails
+                uploadBtn.disabled = false;
+            }
+        });
+
+        uploadForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            if (!selectedFile || !productIdInput.value) return;
+
+            uploadBtn.disabled = true;
+            statusDiv.textContent = "Uploading model and thumbnails...";
+
+            const formData = new FormData();
+            formData.append('file', selectedFile);
+
+            // If we generated thumbnails, append them to the form data
+            if (generatedThumbnails) {
+                formData.append('thumbnails', JSON.stringify(generatedThumbnails));
+            }
+
+            try {
+                const response = await fetch(`/api/products/upload-3d-model/${productIdInput.value}`, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                const result = await response.json();
+
+                if (response.ok) {
+                    statusDiv.textContent = `Success! ${result.message} Location: ${result.location}`;
+                } else {
+                    statusDiv.textContent = `Error: ${result.detail || 'Unknown error'}`;
+                }
+            } catch (err) {
+                statusDiv.textContent = "Network error: " + err.message;
+            } finally {
+                uploadBtn.disabled = false;
+            }
+        });
+    </script>
+</body>
+</html>

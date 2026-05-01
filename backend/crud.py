@@ -10,6 +10,7 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime
 import logging
+from search_engine import search_engine
 
 logger = logging.getLogger(__name__)
 
@@ -134,12 +135,33 @@ def get_products_by_store(db: Session, store_id: str) -> List[Product]:
     """Get all products for a store"""
     return db.query(Product).filter(Product.store_id == store_id).all()
 
+def _product_to_dict(product: Product) -> Dict[str, Any]:
+    return {
+        "id": str(product.id),
+        "brand_id": str(product.brand_id) if product.brand_id else None,
+        "store_id": str(product.store_id) if product.store_id else None,
+        "name": product.name,
+        "description": product.description,
+        "price": float(product.price),
+        "category": product.category,
+        "materials": product.materials,
+        "colors": product.colors,
+        "sizes": product.sizes,
+        "stock_quantity": product.stock_quantity,
+        "is_active": product.is_active,
+        "model_3d_url": product.model_3d_url
+    }
+
 def create_product(db: Session, product_data: Dict[str, Any]) -> Product:
     """Create a new product"""
     db_product = Product(**product_data)
     db.add(db_product)
     db.commit()
     db.refresh(db_product)
+
+    # Sync with Meilisearch
+    search_engine.index_product(_product_to_dict(db_product))
+
     return db_product
 
 def update_product(db: Session, product_id: str, product_data: Dict[str, Any]) -> Optional[Product]:
@@ -150,6 +172,10 @@ def update_product(db: Session, product_id: str, product_data: Dict[str, Any]) -
             setattr(db_product, key, value)
         db.commit()
         db.refresh(db_product)
+
+        # Sync with Meilisearch
+        search_engine.index_product(_product_to_dict(db_product))
+
     return db_product
 
 def delete_product(db: Session, product_id: str) -> bool:
@@ -158,6 +184,10 @@ def delete_product(db: Session, product_id: str) -> bool:
     if db_product:
         db.delete(db_product)
         db.commit()
+
+        # Remove from Meilisearch
+        search_engine.remove_product(product_id)
+
         return True
     return False
 

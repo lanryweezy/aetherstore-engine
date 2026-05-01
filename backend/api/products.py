@@ -1,8 +1,8 @@
 # api/products.py
 # Product management API endpoints for Aetherstore Engine
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -76,8 +76,7 @@ class ProductResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductImageCreate(BaseModel):
     product_id: str
@@ -93,8 +92,7 @@ class ProductImageResponse(BaseModel):
     is_primary: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Product endpoints
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
@@ -137,14 +135,29 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
         query = query.filter(Product.store_id == store_id)
     if category:
         query = query.filter(Product.category == category)
-    return query.offset(skip).limit(limit).all()
+
+    results = query.offset(skip).limit(limit).all()
+
+    # Sign URLs for list results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
+
+from storage_service import storage_service
 
 @router.get("/{product_id}", response_model=ProductResponse)
 async def read_product(product_id: str, db: Session = Depends(get_db)):
-    """Get product by ID"""
+    """Get product by ID and securely sign the 3D model URL"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # Generate pre-signed secure CDN URL for the heavy 3D asset
+    if db_product.model_3d_url:
+        db_product.model_3d_url = storage_service.get_presigned_url(db_product.model_3d_url)
+
     return db_product
 
 @router.put("/{product_id}", response_model=ProductResponse)
@@ -197,11 +210,22 @@ async def upload_product_image(image_data: ProductImageCreate, current_user = De
     db.refresh(db_image)
     return db_image
 
+
+from fastapi import Form
+import json
+import base64
+from PIL import Image
+import io
+from pathlib import Path
+
 @router.post("/upload-3d-model/{product_id}")
-async def upload_3d_model(product_id: str, file: UploadFile = File(...), 
+async def upload_3d_model(product_id: str,
+                          background_tasks: BackgroundTasks,
+                          file: UploadFile = File(...),
+                          thumbnails: Optional[str] = Form(None),
                           current_user = Depends(get_current_active_user),
                           db: Session = Depends(get_db)):
-    """Upload and automatically optimize a 3D model for the web"""
+    """Upload and schedule automatic optimization of a 3D model for the web"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -219,26 +243,45 @@ async def upload_3d_model(product_id: str, file: UploadFile = File(...),
     with open(raw_path, "wb+") as file_object:
         file_object.write(await file.read())
 
-    # TRIGGER AUTO-OPTIMIZATION
-    from asset_processor_3d import optimize_3d_model, OptimizationLevel
-    try:
-        # Decimate mesh and compress textures automatically
-        result = optimize_3d_model(raw_path, optimized_path, OptimizationLevel.MEDIUM)
-        if result.success:
-            final_path = optimized_path
-            os.remove(raw_path) # Clean up raw file
-        else:
-            final_path = raw_path # Fallback to raw if optimization fails
-            logger.warning(f"3D Optimization failed for {product_id}: {result.error_message}")
-    except Exception as e:
-        final_path = raw_path
-        logger.error(f"Error in 3D pipeline for {product_id}: {e}")
+    # Handle client-generated thumbnails if provided
+    if thumbnails:
+        try:
+            thumbs_data = json.loads(thumbnails)
+            thumb_dir = Path(raw_path).parent / "thumbnails"
+            thumb_dir.mkdir(exist_ok=True)
 
-    update_product(db, product_id, {"model_3d_url": final_path})
+            valid_views = ["front", "side", "top", "iso"]
+
+            for view_name, base64_data in thumbs_data.items():
+                if view_name not in valid_views:
+                    continue
+
+                if base64_data and base64_data.startswith("data:image"):
+                    # Extract the base64 string
+                    header, encoded = base64_data.split(",", 1)
+                    image_data = base64.b64decode(encoded)
+                    image = Image.open(io.BytesIO(image_data))
+
+                    thumb_path = thumb_dir / f"{Path(raw_path).stem}_{view_name}.png"
+                    image.save(thumb_path, "PNG")
+                    logger.info(f"Saved client-generated thumbnail to {thumb_path}")
+        except Exception as e:
+            logger.error(f"Failed to process client-generated thumbnails: {e}")
+
+    # Update product immediately to show the raw file while processing
+    update_product(db, product_id, {"model_3d_url": raw_path})
+
+    # TRIGGER AUTO-OPTIMIZATION IN CELERY BACKGROUND WORKER
+    from tasks import process_3d_model_task
+
+    # We delay the task, putting it into the Redis queue for the Celery worker to pick up
+    task = process_3d_model_task.delay(product_id, raw_path, optimized_path)
+
     return {
-        "location": final_path,
-        "optimized": final_path == optimized_path,
-        "metadata": result.metadata if result.success else None
+        "location": raw_path,
+        "status": "processing",
+        "task_id": task.id,
+        "message": "3D model uploaded and is queued for optimization in the background."
     }
 
 @router.get("/{product_id}/images/", response_model=List[ProductImageResponse])
@@ -285,6 +328,8 @@ async def get_low_stock_alerts(threshold: int = 5, brand_id: Optional[str] = Non
     low_stock_items = query.all()
     return [{"id": item.id, "name": item.name, "stock": item.stock_quantity, "brand_id": item.brand_id} for item in low_stock_items]
 
+from search_engine import search_engine
+
 @router.get("/search/advanced", response_model=List[ProductResponse])
 async def search_products_advanced(
     q: Optional[str] = None,
@@ -296,28 +341,71 @@ async def search_products_advanced(
     db: Session = Depends(get_db)
 ):
     """Advanced search with multiple filters and keyword matching"""
-    query = db.query(Product)
+    # Use Meilisearch if available
+    if search_engine.enabled:
+        filters = []
+        if min_price is not None:
+            filters.append(f"price >= {min_price}")
+        if max_price is not None:
+            filters.append(f"price <= {max_price}")
+        if category:
+            filters.append(f"category = '{category}'")
+        if material:
+            filters.append(f"materials = '{material}'")
+        if color:
+            filters.append(f"colors = '{color}'")
 
-    if q:
-        search_filter = (Product.name.ilike(f"%{q}%")) | (Product.description.ilike(f"%{q}%"))
-        query = query.filter(search_filter)
+        query_str = q if q else ""
+        hits = search_engine.search_products(query_str, filters)
 
-    if min_price is not None:
-        query = query.filter(Product.price >= min_price)
+        # Convert dictionary hits back to SQLAlchemy models for the response
+        # In a highly optimized system, you'd just return the dicts directly,
+        # but to maintain the API contract and Pydantic validation:
+        product_ids = [hit['id'] for hit in hits]
 
-    if max_price is not None:
-        query = query.filter(Product.price <= max_price)
+        if not product_ids:
+            return []
 
-    if category:
-        query = query.filter(Product.category == category)
+        # Fetch the real models (maintaining the search engine's ranking order)
+        db_products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+        db_products.sort(key=lambda p: product_ids.index(str(p.id)))
+        results = db_products
 
-    if material:
-        query = query.filter(Product.materials.cast(String).ilike(f"%{material}%"))
+    else:
+        # Fallback to slow SQL ILIKE search if Meilisearch is disabled/offline
+        logger.warning("Meilisearch offline. Falling back to SQL ILIKE search.")
+        query = db.query(Product)
 
-    if color:
-        query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
+        if q:
+            from sqlalchemy import String
+            search_filter = (Product.name.ilike(f"%{q}%")) | (Product.description.ilike(f"%{q}%"))
+            query = query.filter(search_filter)
 
-    return query.all()
+        if min_price is not None:
+            query = query.filter(Product.price >= min_price)
+
+        if max_price is not None:
+            query = query.filter(Product.price <= max_price)
+
+        if category:
+            query = query.filter(Product.category == category)
+
+        if material:
+            from sqlalchemy import String
+            query = query.filter(Product.materials.cast(String).ilike(f"%{material}%"))
+
+        if color:
+            from sqlalchemy import String
+            query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
+
+        results = query.all()
+
+    # Sign URLs for search results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
 
 # Social Proof & Reviews System
 from models import ProductReview
@@ -336,8 +424,7 @@ class ReviewResponse(BaseModel):
     helpful_count: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/{product_id}/reviews", response_model=ReviewResponse)
 async def create_review(product_id: str, review_in: ReviewCreate, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):

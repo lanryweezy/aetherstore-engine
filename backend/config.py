@@ -2,8 +2,8 @@
 # Configuration settings for Aetherstore Engine backend
 
 import os
-from pydantic_settings import BaseSettings
 from typing import Optional
+from pydantic_settings import BaseSettings, SettingsConfigDict
 
 class Settings(BaseSettings):
     # Application settings
@@ -85,9 +85,10 @@ class Settings(BaseSettings):
     # Security Hardening
     RATE_LIMIT_PER_MINUTE: int = 60
 
-    class Config:
-        env_file = ".env"
-        case_sensitive = False
+    model_config = SettingsConfigDict(
+        env_file=".env",
+        case_sensitive=False
+    )
 
 # Create settings instance
 settings = Settings()
