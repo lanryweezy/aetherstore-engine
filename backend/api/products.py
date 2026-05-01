@@ -69,6 +69,7 @@ class ProductResponse(BaseModel):
     dimensions: Optional[Dict[str, Any]] = {}
     care_instructions: Optional[str] = None
     model_3d_url: Optional[str] = None
+    signed_3d_url: Optional[str] = None # Added for secure CDN delivery without modifying ORM
     textures_urls: Optional[List[str]] = []
     physics_properties: Optional[Dict[str, Any]] = {}
     stock_quantity: int
@@ -128,7 +129,7 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
                        current_user = Depends(get_current_active_user),
                        db: Session = Depends(get_db)):
     """List products with optional filtering"""
-    query = db.query(Product)
+    query = db.query(Product).filter(Product.deleted_at == None)
     if brand_id:
         query = query.filter(Product.brand_id == brand_id)
     if store_id:
@@ -505,6 +506,8 @@ async def get_low_stock_alerts(threshold: int = 5, brand_id: Optional[str] = Non
     low_stock_items = query.all()
     return [{"id": item.id, "name": item.name, "stock": item.stock_quantity, "brand_id": item.brand_id} for item in low_stock_items]
 
+from search_engine import search_engine
+
 @router.get("/search/advanced", response_model=List[ProductResponse])
 async def search_products_advanced(
     q: Optional[str] = None,
@@ -516,35 +519,74 @@ async def search_products_advanced(
     db: Session = Depends(get_db)
 ):
     """Advanced search with multiple filters and keyword matching"""
-    query = db.query(Product)
+    # Use Meilisearch if available
+    if search_engine.enabled:
+        filters = []
+        if min_price is not None:
+            filters.append(f"price >= {min_price}")
+        if max_price is not None:
+            filters.append(f"price <= {max_price}")
+        if category:
+            filters.append(f"category = '{category}'")
+        if material:
+            filters.append(f"materials = '{material}'")
+        if color:
+            filters.append(f"colors = '{color}'")
 
-    if q:
-        search_filter = (Product.name.ilike(f"%{q}%")) | (Product.description.ilike(f"%{q}%"))
-        query = query.filter(search_filter)
+        query_str = q if q else ""
+        hits = search_engine.search_products(query_str, filters)
 
-    if min_price is not None:
-        query = query.filter(Product.price >= min_price)
+        # Convert dictionary hits back to SQLAlchemy models for the response
+        # In a highly optimized system, you'd just return the dicts directly,
+        # but to maintain the API contract and Pydantic validation:
+        product_ids = [hit['id'] for hit in hits]
 
-    if max_price is not None:
-        query = query.filter(Product.price <= max_price)
+        if not product_ids:
+            return []
 
-    if category:
-        query = query.filter(Product.category == category)
+        # Fetch the real models (maintaining the search engine's ranking order)
+        db_products = db.query(Product).filter(Product.id.in_(product_ids)).all()
+        db_products.sort(key=lambda p: product_ids.index(str(p.id)))
+        results = db_products
 
-    if material:
-        query = query.filter(Product.materials.cast(String).ilike(f"%{material}%"))
+    else:
+        # Fallback to slow SQL ILIKE search if Meilisearch is disabled/offline
+        logger.warning("Meilisearch offline. Falling back to SQL ILIKE search.")
+        query = db.query(Product).filter(Product.deleted_at == None)
 
-    if color:
-        query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
+        if q:
+            from sqlalchemy import String
+            search_filter = (Product.name.ilike(f"%{q}%")) | (Product.description.ilike(f"%{q}%"))
+            query = query.filter(search_filter)
 
-    results = query.all()
+        if min_price is not None:
+            query = query.filter(Product.price >= min_price)
+
+        if max_price is not None:
+            query = query.filter(Product.price <= max_price)
+
+        if category:
+            query = query.filter(Product.category == category)
+
+        if material:
+            from sqlalchemy import String
+            query = query.filter(Product.materials.cast(String).ilike(f"%{material}%"))
+
+        if color:
+            from sqlalchemy import String
+            query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
+
+        results = query.all()
 
     # Sign URLs for search results
+    response_list = []
     for product in results:
-        if product.model_3d_url:
-            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+        prod_dict = ProductResponse.model_validate(product).model_dump()
+        if prod_dict.get('model_3d_url'):
+            prod_dict['signed_3d_url'] = storage_service.get_presigned_url(prod_dict['model_3d_url'])
+        response_list.append(prod_dict)
 
-    return results
+    return response_list
 
 # Social Proof & Reviews System
 from models import ProductReview
