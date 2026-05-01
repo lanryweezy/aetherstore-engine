@@ -17,6 +17,7 @@ from blockchain_integration import DigitalOwnershipService
 from social_integration import SocialShoppingService
 from ai_consultant import AIConsultantService
 from api.physics import router as physics_router
+from ai_processing import process_body_scan as ai_process_body_scan
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -875,6 +876,29 @@ async def get_current_trends(category: str = None):
 
 
 app.include_router(physics_router)
+
+@app.post("/api/ai/scan-body")
+async def ai_scan_body(file: UploadFile = File(...)):
+    """
+    Reconstruct body measurements from a user's photo using SAM 3D and MediaPipe.
+    """
+    try:
+        # Save temp file
+        temp_path = f"backend/temp/scan_{uuid.uuid4().hex}_{file.filename}"
+        os.makedirs("backend/temp", exist_ok=True)
+        with open(temp_path, "wb") as buffer:
+            buffer.write(await file.read())
+            
+        # Process scan (simulated AI logic based on SAM 3D & MediaPipe)
+        result = ai_process_body_scan(temp_path)
+        
+        # Cleanup
+        os.remove(temp_path)
+        
+        return JSONResponse(content=result, status_code=200)
+    except Exception as e:
+        logger.error(f"AI Scan failed: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)

@@ -4,7 +4,8 @@ import Hero from './components/Hero';
 import Features from './components/Features';
 import Footer from './components/Footer';
 import Scene3D from './components/Scene3D';
-import { Ruler, Trash2, Camera } from 'lucide-react';
+import axios from 'axios';
+import { Ruler, Trash2, Camera, Loader2 } from 'lucide-react';
 
 function App() {
   const [measurements, setMeasurements] = useState({
@@ -13,9 +14,37 @@ function App() {
     waist: 80,
     hips: 95
   });
+  const [isScanning, setIsScanning] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleMeasurementChange = (key: keyof typeof measurements, val: number) => {
     setMeasurements(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleAIScan = async (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    setIsScanning(true);
+    const formData = new FormData();
+    formData.append('file', file);
+
+    try {
+      const response = await axios.post('http://localhost:8000/api/ai/scan-body', formData);
+      if (response.data.measurements) {
+        setMeasurements({
+          height: Math.round(response.data.measurements.height),
+          chest: Math.round(response.data.measurements.chest),
+          waist: Math.round(response.data.measurements.waist),
+          hips: Math.round(response.data.measurements.hips)
+        });
+      }
+    } catch (error) {
+      console.error('AI Scan failed:', error);
+      alert('AI Scan failed. Please try a clearer photo.');
+    } finally {
+      setIsScanning(false);
+    }
   };
 
   return (
@@ -58,11 +87,29 @@ function App() {
                   ))}
 
                   <div className="pt-6 flex gap-3">
-                    <button className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary-600 hover:bg-primary-700 rounded-xl font-bold transition-all text-sm uppercase tracking-wider">
-                      <Camera className="w-4 h-4" />
-                      AI Scan
+                    <input 
+                      type="file" 
+                      ref={fileInputRef} 
+                      className="hidden" 
+                      accept="image/*" 
+                      onChange={handleAIScan} 
+                    />
+                    <button 
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={isScanning}
+                      className="flex-1 flex items-center justify-center gap-2 py-3 bg-primary-600 hover:bg-primary-700 rounded-xl font-bold transition-all text-sm uppercase tracking-wider disabled:opacity-50"
+                    >
+                      {isScanning ? (
+                        <Loader2 className="w-4 h-4 animate-spin" />
+                      ) : (
+                        <Camera className="w-4 h-4" />
+                      )}
+                      {isScanning ? 'Processing...' : 'AI Scan'}
                     </button>
-                    <button className="p-3 bg-slate-700 hover:bg-slate-600 rounded-xl transition-all">
+                    <button 
+                      onClick={() => setMeasurements({ height: 175, chest: 95, waist: 80, hips: 95 })}
+                      className="p-3 bg-slate-700 hover:bg-slate-600 rounded-xl transition-all"
+                    >
                       <Trash2 className="w-5 h-5" />
                     </button>
                   </div>
