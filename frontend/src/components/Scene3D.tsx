@@ -16,7 +16,7 @@ const Scene3D: React.FC<Scene3DProps> = ({ measurements }) => {
       
       <Canvas shadows camera={{ position: [0, 1.5, 4], fov: 50 }}>
         <Suspense fallback={null}>
-          <Stage environment="city" intensity={0.5} contactShadow={false}>
+          <Stage environment="city" intensity={0.5}>
             <Avatar measurements={measurements} />
           </Stage>
           <Environment preset="city" />

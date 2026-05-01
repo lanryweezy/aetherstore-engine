@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
-import { ShoppingCart, Eye, Sparkles, Tag, ChevronRight } from 'lucide-react';
+import { ShoppingCart, Eye, Sparkles, Tag } from 'lucide-react';
 
 interface Product {
   id: string;
@@ -20,7 +20,6 @@ interface StorefrontProps {
 
 const Storefront: React.FC<StorefrontProps> = ({ onSelectProduct }) => {
   const [products, setProducts] = useState<Product[]>([]);
-  const [loading, setLoading] = useState(true);
   const [filter, setCategoryFilter] = useState('All');
 
   useEffect(() => {
@@ -57,8 +56,6 @@ const Storefront: React.FC<StorefrontProps> = ({ onSelectProduct }) => {
             asset_urls: { '3d_model': '', image: '' }
           }
         ]);
-      } finally {
-        setLoading(false);
       }
     };
 

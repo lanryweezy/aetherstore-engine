@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShoppingBag, User, Sparkles, Box } from 'lucide-react';
+import { ShoppingBag, User, Box } from 'lucide-react';
 
 const Header: React.FC = () => {
   return (

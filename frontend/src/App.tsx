@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useRef } from 'react';
 import Header from './components/Header';
 import Hero from './components/Hero';
 import Features from './components/Features';
 import Footer from './components/Footer';
 import Scene3D from './components/Scene3D';
 import Storefront from './components/Storefront';
+import AIStylist from './components/AIStylist';
 import axios from 'axios';
 import { Ruler, Trash2, Camera, Loader2, Sparkles } from 'lucide-react';
 
@@ -159,14 +160,7 @@ function App() {
       </main>
 
       <Footer />
-    </div>
-  );
-}
-
-        <Features />
-      </main>
-
-      <Footer />
+      <AIStylist />
     </div>
   );
 }

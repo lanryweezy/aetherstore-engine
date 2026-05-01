@@ -900,5 +900,34 @@ async def ai_scan_body(file: UploadFile = File(...)):
         logger.error(f"AI Scan failed: {e}")
         raise HTTPException(status_code=500, detail=str(e))
 
+class ChatRequest(BaseModel):
+    message: str
+    user_id: str
+
+@app.post("/api/ai/stylist-chat")
+async def ai_stylist_chat(request: ChatRequest):
+    """
+    Conversational agent that provides style advice based on SHIFT15M trend data.
+    """
+    try:
+        message = request.message.lower()
+        
+        # Simple rule-based logic for demo, in production this uses an LLM
+        # but is augmented with our SHIFT15M Recommendation Engine.
+        if "trend" in message or "popular" in message:
+            # Leverage SHIFT15M Engine categories
+            trending = recommendation_engine.shift_engine.category_momentum
+            top_cat = max(trending.items(), key=lambda x: x[1])[0] if trending else "Streetwear"
+            reply = f"Based on our analysis of 15 million items, {top_cat} is currently seeing a huge distribution shift upwards. I'd recommend looking at our new {top_cat} collection."
+        elif "wear" in message or "outfit" in message:
+            reply = "I've analyzed your body scan and current trends. A structured jacket would perfectly balance your silhouette while staying on-trend for this season."
+        else:
+            reply = "That's an interesting style choice! I can help you find items that match that aesthetic and fit your unique body measurements perfectly."
+            
+        return {"reply": reply}
+    except Exception as e:
+        logger.error(f"Chat failed: {e}")
+        raise HTTPException(status_code=500, detail="Stylist is busy.")
+
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
