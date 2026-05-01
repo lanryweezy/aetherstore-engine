@@ -2,7 +2,7 @@
 # Try-on session management API endpoints for Aetherstore Engine
 
 from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -38,8 +38,7 @@ class TryOnResponse(BaseModel):
     duration_seconds: Optional[int] = None
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class FitAnalysisRequest(BaseModel):
     user_measurements: Dict[str, float]

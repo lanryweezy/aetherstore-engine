@@ -9,6 +9,7 @@ import logging
 from config import settings
 from jinja2 import Template
 from pathlib import Path
+from circuit_breaker import email_circuit
 
 logger = logging.getLogger(__name__)
 
@@ -133,6 +134,7 @@ class EmailService:
             if not template_path.exists():
                 template_path.write_text(content)
     
+    @email_circuit
     async def send_email(
         self,
         to_email: str,
@@ -219,6 +221,9 @@ class EmailService:
             return True
         else:
             logger.error(f"SendGrid error: {response.status_code} - {response.text}")
+            # Raise exception so the circuit breaker catches it
+            if response.status_code >= 500:
+                raise Exception("SendGrid is experiencing server errors")
             return False
     
     async def _send_via_mailgun(
@@ -261,6 +266,8 @@ class EmailService:
             return True
         else:
             logger.error(f"Mailgun error: {response.status_code} - {response.text}")
+            if response.status_code >= 500:
+                raise Exception("Mailgun is experiencing server errors")
             return False
     
     async def _send_via_smtp(

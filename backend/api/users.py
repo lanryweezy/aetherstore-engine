@@ -2,7 +2,7 @@
 # User management API endpoints for Aetherstore Engine
 
 from fastapi import APIRouter, Depends, HTTPException, status, Request
-from pydantic import BaseModel, EmailStr
+from pydantic import BaseModel, EmailStr, ConfigDict
 from typing import List, Optional
 from datetime import datetime
 import uuid
@@ -35,8 +35,7 @@ class UserResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class UserLogin(BaseModel):
     email: EmailStr

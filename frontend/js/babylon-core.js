@@ -12,19 +12,66 @@ class BabylonEngine {
             return;
         }
 
-        this.engine = new BABYLON.Engine(this.canvas, true);
-        this.scene = new BABYLON.Scene(this.engine);
         this.camera = null;
         this.lights = [];
         this.avatar = null;
-        this.remoteAvatars = new Map(); # Store other users in the same room
+        this.remoteAvatars = new Map(); // Store other users in the same room
+        this.remoteSounds = new Map(); // Map to hold Babylon Sound objects for WebRTC
         this.physicsEnabled = false;
+        this.lodSystem = null;
 
+        // Provide a promise that resolves when the engine is fully ready
+        this.ready = this.initEngine();
+    }
+
+    async initEngine() {
+        console.log('Initializing WebGPU / WebGL Engine...');
+
+        // Attempt WebGPU first for massive performance gains
+        if (BABYLON.WebGPUEngine.IsSupported) {
+            this.engine = new BABYLON.WebGPUEngine(this.canvas);
+            await this.engine.initAsync();
+            console.log('Successfully initialized WebGPU rendering engine!');
+        } else {
+            console.log('WebGPU not supported on this browser. Falling back to WebGL 2.0');
+            this.engine = new BABYLON.Engine(this.canvas, true);
+        }
+
+        this.scene = new BABYLON.Scene(this.engine);
         this.init();
+
+        // Apply hardware profiling to automatically scale performance
+        if (typeof window.DeviceProfiler !== 'undefined') {
+            const profiler = new window.DeviceProfiler(this.engine, this.scene);
+            profiler.applyOptimalSettings();
+        }
+
+        // Run render loop
+        this.engine.runRenderLoop(() => {
+            this.scene.render();
+        });
+
+        window.addEventListener('resize', () => {
+            this.engine.resize();
+        });
     }
 
     init() {
         console.log('Initializing Babylon.js Engine Foundation...');
+
+        // Initialize Instancing System
+        if (typeof window.InstancingSystem !== 'undefined') {
+            this.instancingSystem = new window.InstancingSystem(this.scene);
+            console.log('Babylon.js Instancing System initialized');
+        }
+
+        // Initialize Auto LOD System
+        if (typeof window.AutoLODSystem !== 'undefined') {
+            this.lodSystem = new window.AutoLODSystem(this.scene);
+            // Optionally enable the dynamic framerate optimizer
+            this.lodSystem.enableDynamicSceneOptimizer(60);
+            console.log('Babylon.js Auto LOD System initialized');
+        }
 
         // 1. Setup Camera
         this.camera = new BABYLON.ArcRotateCamera(
@@ -48,26 +95,24 @@ class BabylonEngine {
         // 4. Initialize WebXR (VR/AR Readiness)
         this.initXR();
 
-        // 5. Start Render Loop
-        this.engine.runRenderLoop(() => {
-            this.scene.render();
-        });
-
-        window.addEventListener("resize", () => {
-            this.engine.resize();
-        });
-
         console.log('Babylon.js Foundation Ready');
     }
 
     async enablePhysics() {
         try {
-            // Using Havok or Cannon.js for physics
+            // Using Havok for ultra-fast physics and complex cloth simulation
             const gravityVector = new BABYLON.Vector3(0, -9.81, 0);
-            const physicsPlugin = new BABYLON.CannonJSPlugin();
-            this.scene.enablePhysics(gravityVector, physicsPlugin);
-            this.physicsEnabled = true;
-            console.log('Babylon.js Physics Enabled (Cloth readiness: HIGH)');
+
+            // Initialize Havok WASM
+            if (typeof HavokPhysics !== 'undefined') {
+                const havokInstance = await HavokPhysics();
+                const physicsPlugin = new BABYLON.HavokPlugin(true, havokInstance);
+                this.scene.enablePhysics(gravityVector, physicsPlugin);
+                this.physicsEnabled = true;
+                console.log('Babylon.js Havok Physics Enabled (Cloth readiness: ULTRA)');
+            } else {
+                throw new Error("HavokPhysics WASM package not found.");
+            }
         } catch (error) {
             console.warn('Physics initialization failed, falling back to static rendering:', error);
         }
@@ -79,9 +124,22 @@ class BabylonEngine {
     async initXR() {
         try {
             this.xrHelper = await this.scene.createDefaultXRExperienceAsync({
-                floorMeshes: [] # To be populated by store environment
+                uiOptions: {
+                    sessionMode: "immersive-ar",
+                    referenceSpaceType: "local-floor"
+                },
+                optionalFeatures: true
             });
-            console.log('Babylon.js WebXR Initialized');
+
+            // Enable AR Pass-through (Background Remover)
+            // This hides the virtual store environment and displays the user's real camera feed
+            const featuresManager = this.xrHelper.baseExperience.featuresManager;
+            featuresManager.enableFeature(BABYLON.WebXRBackgroundRemover.Name);
+
+            // Enable Hit Test to place 3D clothing on physical real-world surfaces
+            featuresManager.enableFeature(BABYLON.WebXRHitTest.Name, "latest");
+
+            console.log('Babylon.js WebXR (AR Pass-through) Initialized');
         } catch (e) {
             console.warn('WebXR not supported in this environment:', e);
         }
@@ -123,6 +181,95 @@ class BabylonEngine {
 
             return result;
         });
+    }
+
+    async addProductToStore(modelUrl, position, rotation, scaling) {
+        let rootNode;
+        if (this.instancingSystem) {
+            // High performance instance
+            rootNode = await this.instancingSystem.addProduct(modelUrl, position, rotation, scaling);
+        } else {
+            // Fallback to standard loading
+            const result = await BABYLON.SceneLoader.ImportMeshAsync("", "", modelUrl, this.scene);
+            rootNode = result.meshes[0];
+            if (position) rootNode.position = position;
+            if (rotation) rootNode.rotation = rotation;
+            if (scaling) rootNode.scaling = scaling;
+        }
+
+        // Apply automatic LOD processing to the loaded product
+        if (this.lodSystem && rootNode) {
+            this.lodSystem.applyAutoLOD(rootNode);
+        }
+
+        return rootNode;
+    }
+
+    /**
+     * Smoothly animate a product from its current location (e.g., a store rack)
+     * onto the user's avatar.
+     * @param {BABYLON.Mesh} productNode - The root node of the 3D product.
+     * @param {BABYLON.Vector3} targetPosition - Where the product should land on the avatar.
+     * @param {BABYLON.Vector3} targetRotation - How the product should be oriented.
+     * @param {BABYLON.Vector3} targetScaling - The final scaling of the product.
+     * @param {number} durationSeconds - How long the animation takes.
+     */
+    animateEquipProduct(productNode, targetPosition, targetRotation, targetScaling, durationSeconds = 1.0) {
+        const frameRate = 60;
+        const totalFrames = frameRate * durationSeconds;
+
+        // Position Animation
+        const animPosition = new BABYLON.Animation(
+            "equipPosAnim",
+            "position",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animPosition.setKeys([
+            { frame: 0, value: productNode.position.clone() },
+            { frame: totalFrames, value: targetPosition }
+        ]);
+
+        // Rotation Animation
+        const animRotation = new BABYLON.Animation(
+            "equipRotAnim",
+            "rotation",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animRotation.setKeys([
+            { frame: 0, value: productNode.rotation.clone() },
+            { frame: totalFrames, value: targetRotation }
+        ]);
+
+        // Scaling Animation
+        const animScaling = new BABYLON.Animation(
+            "equipScaleAnim",
+            "scaling",
+            frameRate,
+            BABYLON.Animation.ANIMATIONTYPE_VECTOR3,
+            BABYLON.Animation.ANIMATIONLOOPMODE_CONSTANT
+        );
+        animScaling.setKeys([
+            { frame: 0, value: productNode.scaling.clone() },
+            { frame: totalFrames, value: targetScaling }
+        ]);
+
+        // Apply easing function for smooth interpolation (EaseInOut)
+        const easingFunction = new BABYLON.CubicEase();
+        easingFunction.setEasingMode(BABYLON.EasingFunction.EASINGMODE_EASEINOUT);
+        animPosition.setEasingFunction(easingFunction);
+        animRotation.setEasingFunction(easingFunction);
+        animScaling.setEasingFunction(easingFunction);
+
+        productNode.animations.push(animPosition);
+        productNode.animations.push(animRotation);
+        productNode.animations.push(animScaling);
+
+        console.log(`Animating Virtual Try-On for ${productNode.name}`);
+        this.scene.beginAnimation(productNode, 0, totalFrames, false);
     }
 
     applyProportionalScaling(mesh, measurements) {
@@ -191,6 +338,68 @@ class BabylonEngine {
             this.remoteAvatars.delete(userId);
             console.log('Removed remote avatar:', userId);
         }
+
+        const sound = this.remoteSounds.get(userId);
+        if (sound) {
+            sound.dispose();
+            this.remoteSounds.delete(userId);
+        }
+    }
+
+    /**
+     * Attach a WebRTC Audio MediaStream to a 3D remote avatar for Spatial Audio
+     * @param {string} userId - The ID of the remote user
+     * @param {MediaStream} mediaStream - The WebRTC Audio stream
+     */
+    attachSpatialAudioStream(userId, mediaStream) {
+        // Ensure AudioEngine is initialized
+        if (!BABYLON.Engine.audioEngine.unlocked) {
+            BABYLON.Engine.audioEngine.unlock();
+        }
+
+        const remoteMesh = this.remoteAvatars.get(userId);
+        if (!remoteMesh) {
+            console.log(`Delaying audio attachment, spawning avatar for ${userId} first.`);
+            this.updateRemoteAvatar(userId, {
+                position: {x: 0, y: 0, z: 0},
+                rotation: {x: 0, y: 0, z: 0}
+            });
+            // Re-fetch the newly created mesh
+            const newMesh = this.remoteAvatars.get(userId);
+            if (!newMesh) return;
+        }
+
+        // Clean up any existing sound for this user
+        if (this.remoteSounds.has(userId)) {
+            this.remoteSounds.get(userId).dispose();
+        }
+
+        // Create a Babylon Sound from the MediaStream
+        // Note: Babylon.js Sound supports MediaStream natively
+        const sound = new BABYLON.Sound(
+            "voice_" + userId,
+            mediaStream,
+            this.scene,
+            null,
+            {
+                spatialSound: true,
+                maxDistance: 20,    // Sound completely fades out at 20 units
+                rolloffFactor: 1.5, // How fast the sound fades out
+                loop: true,
+                autoplay: true
+            }
+        );
+
+        // Attach the sound to the user's 3D mesh!
+        // As the mesh moves via WebSocket updates, the sound source will follow it.
+        // We use either the newly created mesh or the existing one
+        const meshToAttach = remoteMesh || this.remoteAvatars.get(userId);
+        if(meshToAttach){
+            sound.attachToMesh(meshToAttach);
+        }
+
+        this.remoteSounds.set(userId, sound);
+        console.log(`Spatial audio attached to remote avatar: ${userId}`);
     }
 
     /**
@@ -200,67 +409,72 @@ class BabylonEngine {
     applyLightingPreset(presetName) {
         console.log(`Applying Lighting Preset: ${presetName}`);
 
-        // Clear existing lights
+        // Clear existing lights and environment
         this.lights.forEach(light => light.dispose());
         this.lights = [];
+        if (this.scene.environmentTexture) {
+            this.scene.environmentTexture.dispose();
+            this.scene.environmentTexture = null;
+        }
+
+        // Always add a baseline HDRI environment map for high-quality PBR Image-Based Lighting (IBL)
+        // This is insanely cheap for the GPU and provides photorealistic reflections on materials like leather/silk.
+        // We use a default env map provided by Babylon.js for rapid integration
+        const envTexture = BABYLON.CubeTexture.CreateFromPrefilteredData("https://environment.babylonjs.com/environment.env", this.scene);
+        this.scene.environmentTexture = envTexture;
 
         switch(presetName) {
             case 'cinematic':
+                this.scene.environmentIntensity = 0.5;
                 const keyLight = new BABYLON.DirectionalLight("KeyLight", new BABYLON.Vector3(-1, -2, -1), this.scene);
                 keyLight.position = new BABYLON.Vector3(5, 10, 5);
-                keyLight.intensity = 1.2;
-
-                const fillLight = new BABYLON.HemisphericLight("FillLight", new BABYLON.Vector3(0, 1, 0), this.scene);
-                fillLight.intensity = 0.4;
-                fillLight.groundColor = new BABYLON.Color3(0.1, 0.1, 0.2);
-
-                this.lights.push(keyLight, fillLight);
+                keyLight.intensity = 1.5;
+                this.lights.push(keyLight);
                 break;
 
             case 'neon':
+                this.scene.environmentIntensity = 0.1; // Darken env map for neon to pop
                 const neon1 = new BABYLON.PointLight("Neon1", new BABYLON.Vector3(-3, 2, 0), this.scene);
                 neon1.diffuse = new BABYLON.Color3(1, 0, 1); // Pink
-                neon1.intensity = 2;
+                neon1.intensity = 5;
 
                 const neon2 = new BABYLON.PointLight("Neon2", new BABYLON.Vector3(3, 2, 0), this.scene);
                 neon2.diffuse = new BABYLON.Color3(0, 1, 1); // Cyan
-                neon2.intensity = 2;
-
-                const ambient = new BABYLON.HemisphericLight("Ambient", new BABYLON.Vector3(0, 1, 0), this.scene);
-                ambient.intensity = 0.2;
-
-                this.lights.push(neon1, neon2, ambient);
+                neon2.intensity = 5;
+                this.lights.push(neon1, neon2);
                 break;
 
             case 'sunlight':
+                this.scene.environmentIntensity = 1.0;
                 const sun = new BABYLON.DirectionalLight("Sun", new BABYLON.Vector3(1, -2, 1), this.scene);
-                sun.intensity = 3;
+                sun.intensity = 2;
                 sun.diffuse = new BABYLON.Color3(1, 1, 0.9);
-
-                const sky = new BABYLON.HemisphericLight("Sky", new BABYLON.Vector3(0, 1, 0), this.scene);
-                sky.intensity = 0.6;
-                sky.diffuse = new BABYLON.Color3(0.7, 0.8, 1);
-
-                this.lights.push(sun, sky);
+                this.lights.push(sun);
                 break;
 
             case 'studio':
             default:
-                const hemiLight = new BABYLON.HemisphericLight("HemiLight", new BABYLON.Vector3(0, 1, 0), this.scene);
-                hemiLight.intensity = 0.8;
-
-                const pointLight = new BABYLON.PointLight("StudioPoint", new BABYLON.Vector3(0, 5, 0), this.scene);
-                pointLight.intensity = 0.5;
-
-                this.lights.push(hemiLight, pointLight);
+                // Studio relies almost entirely on the beautiful HDRI reflections
+                this.scene.environmentIntensity = 1.2;
+                // Just a subtle directional light to cast shadows
+                const studioLight = new BABYLON.DirectionalLight("StudioDir", new BABYLON.Vector3(0.5, -2, 0.5), this.scene);
+                studioLight.intensity = 0.5;
+                this.lights.push(studioLight);
                 break;
         }
 
-        // Enable shadows for the main light if it's directional
+        // Enable cinematic soft shadows for the main directional light
         const mainLight = this.lights.find(l => l instanceof BABYLON.DirectionalLight);
         if (mainLight) {
-            const shadowGenerator = new BABYLON.ShadowGenerator(1024, mainLight);
-            shadowGenerator.useBlurExponentialShadowMap = true;
+            // Use CascadedShadowGenerator for massive quality improvements, especially in large stores
+            const shadowGenerator = new BABYLON.CascadedShadowGenerator(2048, mainLight);
+            shadowGenerator.usePercentageCloserFiltering = true; // PCF provides excellent soft edges
+            shadowGenerator.filteringQuality = BABYLON.ShadowGenerator.QUALITY_HIGH;
+
+            // Enable Contact Shadows for fine-detail micro-occlusion (like wrinkles in cloth)
+            shadowGenerator.useContactShadow = true;
+            shadowGenerator.contactShadowDistance = 0.1;
+
             this.shadowGenerator = shadowGenerator;
         }
     }

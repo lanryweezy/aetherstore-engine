@@ -180,8 +180,6 @@ async def verify_payment(
                     if order:
                         order.payment_status = "paid"
                         db.commit()
-                    finally:
-                        db.close()
             
             return PaymentVerificationResponse(
                 success=result.get("success", False),
@@ -254,40 +252,47 @@ async def stripe_webhook(
             import json
             event = json.loads(body)
         
-        # Handle the event
-        if event["type"] == "payment_intent.succeeded":
-            payment_intent = event["data"]["object"]
-            logger.info(f"Payment succeeded: {payment_intent['id']}")
-            
-            # Update order status
-            order_id = payment_intent.get("metadata", {}).get("order_id")
-            if order_id:
-                from database import SessionLocal
-                db = SessionLocal()
-                try:
+        # Idempotency Check
+        event_id = event["id"]
+        from database import SessionLocal
+        from models import ProcessedWebhook
+        db = SessionLocal()
+
+        try:
+            # Check if we already processed this webhook
+            if db.query(ProcessedWebhook).filter(ProcessedWebhook.id == event_id).first():
+                logger.info(f"Webhook {event_id} already processed. Skipping.")
+                return {"status": "success", "message": "already_processed"}
+
+            # Handle the event
+            if event["type"] == "payment_intent.succeeded":
+                payment_intent = event["data"]["object"]
+                logger.info(f"Payment succeeded: {payment_intent['id']}")
+
+                # Update order status
+                order_id = payment_intent.get("metadata", {}).get("order_id")
+                if order_id:
                     order = get_order(db, order_id)
                     if order:
                         order.payment_status = "paid"
                         order.status = "confirmed"
-                        db.commit()
-                finally:
-                    db.close()
-        
-        elif event["type"] == "payment_intent.payment_failed":
-            payment_intent = event["data"]["object"]
-            logger.warning(f"Payment failed: {payment_intent['id']}")
             
-            order_id = payment_intent.get("metadata", {}).get("order_id")
-            if order_id:
-                from database import SessionLocal
-                db = SessionLocal()
-                try:
+            elif event["type"] == "payment_intent.payment_failed":
+                payment_intent = event["data"]["object"]
+                logger.warning(f"Payment failed: {payment_intent['id']}")
+
+                order_id = payment_intent.get("metadata", {}).get("order_id")
+                if order_id:
                     order = get_order(db, order_id)
                     if order:
                         order.payment_status = "failed"
-                        db.commit()
-                finally:
-                    db.close()
+
+            # Record webhook as processed
+            processed = ProcessedWebhook(id=event_id, provider="stripe")
+            db.add(processed)
+            db.commit()
+        finally:
+            db.close()
         
         return {"status": "success"}
     except Exception as e:
@@ -304,50 +309,54 @@ async def paystack_webhook(request: Request):
         body = await request.json()
         event = body.get("event")
         data = body.get("data", {})
+        reference = data.get("reference")
         
-        if event == "charge.success":
-            reference = data.get("reference")
-            logger.info(f"Payment succeeded: {reference}")
+        # Idempotency Check for Paystack (We use the reference as the unique event ID)
+        if not reference:
+            return {"status": "ignored"}
             
-            # Verify payment
-            result = await payment_service.verify_payment_paystack(reference)
-            
-            if result.get("success"):
-                # Update order status
-                # In production, you'd store reference with order
-                # For now, we handle via metadata
-                metadata = data.get("metadata", {})
-                order_id = metadata.get("order_id")
+        from database import SessionLocal
+        from models import ProcessedWebhook
+        db = SessionLocal()
+
+        try:
+            if db.query(ProcessedWebhook).filter(ProcessedWebhook.id == reference).first():
+                logger.info(f"Webhook {reference} already processed. Skipping.")
+                return {"status": "success", "message": "already_processed"}
+
+            if event == "charge.success":
+                logger.info(f"Payment succeeded: {reference}")
                 
-                if order_id:
-                    from database import SessionLocal
-                    db = SessionLocal()
-                    try:
+                # Verify payment
+                result = await payment_service.verify_payment_paystack(reference)
+
+                if result.get("success"):
+                    metadata = data.get("metadata", {})
+                    order_id = metadata.get("order_id")
+
+                    if order_id:
                         order = get_order(db, order_id)
                         if order:
                             order.payment_status = "paid"
                             order.status = "confirmed"
-                            db.commit()
-                    finally:
-                        db.close()
-        
-        elif event == "charge.failed":
-            reference = data.get("reference")
-            logger.warning(f"Payment failed: {reference}")
             
-            metadata = data.get("metadata", {})
-            order_id = metadata.get("order_id")
-            
-            if order_id:
-                from database import SessionLocal
-                db = SessionLocal()
-                try:
+            elif event == "charge.failed":
+                logger.warning(f"Payment failed: {reference}")
+
+                metadata = data.get("metadata", {})
+                order_id = metadata.get("order_id")
+
+                if order_id:
                     order = get_order(db, order_id)
                     if order:
                         order.payment_status = "failed"
-                        db.commit()
-                finally:
-                    db.close()
+
+            # Record webhook as processed
+            processed = ProcessedWebhook(id=reference, provider="paystack")
+            db.add(processed)
+            db.commit()
+        finally:
+            db.close()
         
         return {"status": "success"}
     except Exception as e:
@@ -388,6 +397,7 @@ async def refund_payment(
             # Update order status
             # Find order by payment_id (would need to store this)
             # For now, return success
+            pass
         
         return result
     except HTTPException:

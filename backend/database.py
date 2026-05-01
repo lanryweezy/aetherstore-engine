@@ -2,8 +2,8 @@
 # Database connection and session management for Aetherstore Engine
 
 import os
-from sqlalchemy import create_engine, text
-from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy import create_engine, text, pool
+from sqlalchemy.orm import declarative_base
 from sqlalchemy.orm import sessionmaker, Session
 from contextlib import contextmanager
 from typing import Generator
@@ -34,9 +34,12 @@ engine_kwargs = {
 }
 
 if not DATABASE_URL.startswith("sqlite"):
-    engine_kwargs["pool_size"] = pool_size or 5
-    engine_kwargs["max_overflow"] = max_overflow or 10
+    engine_kwargs["poolclass"] = pool.QueuePool
+    engine_kwargs["pool_size"] = pool_size or 20
+    engine_kwargs["max_overflow"] = max_overflow or 30
     engine_kwargs["pool_pre_ping"] = True
+    engine_kwargs["pool_timeout"] = 30 # seconds to wait before giving up on getting a connection
+    engine_kwargs["pool_recycle"] = 1800 # recycle connections after 30 minutes
 
 # Create engine
 engine = create_engine(DATABASE_URL, **engine_kwargs)
