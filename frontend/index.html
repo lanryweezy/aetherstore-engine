@@ -1,84 +1,13 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Aetherstore Engine - 3D Fashion Platform</title>
-    <link rel="stylesheet" href="styles/main.css">
-    <link rel="stylesheet" href="styles/tailwind.css">
-    <!-- Add any additional CSS files here -->
-</head>
-<body>
-    <header>
-        <nav class="bg-gray-800 text-white p-4" aria-label="Main Navigation">
-            <div class="container mx-auto flex justify-between items-center">
-                <h1 class="text-xl font-bold">Aetherstore Engine</h1>
-                <ul class="flex space-x-4" role="menubar">
-                    <li role="none"><a href="#" role="menuitem" class="hover:text-gray-300" tabindex="0">Home</a></li>
-                    <li role="none"><a href="#" role="menuitem" class="hover:text-gray-300" tabindex="0">Products</a></li>
-                    <li role="none"><a href="#" role="menuitem" class="hover:text-gray-300" tabindex="0">Try-On</a></li>
-                    <li role="none"><a href="#" role="menuitem" class="hover:text-gray-300" tabindex="0">AI Assistant</a></li>
-                    <li role="none"><a href="sam-3d-demo.html" role="menuitem" class="hover:text-gray-300" tabindex="0">SAM 3D Demo</a></li>
-                </ul>
-            </div>
-        </nav>
-    </header>
-
-    <main class="container mx-auto p-4" id="main-content">
-        <section class="hero bg-gradient-to-r from-purple-500 to-indigo-600 text-white rounded-lg p-8 mb-8 text-center" aria-labelledby="hero-heading">
-            <h2 id="hero-heading" class="text-3xl font-bold mb-4">Revolutionary 3D Fashion Experience</h2>
-            <p class="text-xl mb-6">Immerse yourself in the future of online fashion with our cutting-edge 3D platform</p>
-            <button class="bg-white text-indigo-600 font-bold py-2 px-6 rounded-full hover:bg-gray-100 transition duration-300" aria-label="Explore the collection" tabindex="0">
-                Explore Collection
-            </button>
-        </section>
-
-        <section class="features grid grid-cols-1 md:grid-cols-3 gap-6 mb-8" aria-label="Platform Features">
-            <div class="feature bg-white p-6 rounded-lg shadow-md" tabindex="0">
-                <h3 class="text-xl font-bold mb-2">Virtual Try-On</h3>
-                <p>Experience clothes on your personalized 3D avatar before purchasing</p>
-            </div>
-            <div class="feature bg-white p-6 rounded-lg shadow-md" tabindex="0">
-                <h3 class="text-xl font-bold mb-2">AI Stylist</h3>
-                <p>Get personalized fashion recommendations with our AI consultant</p>
-            </div>
-            <div class="feature bg-white p-6 rounded-lg shadow-md" tabindex="0">
-                <h3 class="text-xl font-bold mb-2">3D Store Builder</h3>
-                <p>Create your own immersive brand experiences with our no-code tools</p>
-            </div>
-        </section>
-
-        <section class="cta bg-gray-100 p-8 rounded-lg text-center" aria-labelledby="cta-heading">
-            <h3 id="cta-heading" class="text-2xl font-bold mb-4">Ready to Transform Your Fashion Experience?</h3>
-            <p class="mb-6">Join thousands of users enjoying the future of online shopping</p>
-            <button class="bg-indigo-600 text-white font-bold py-2 px-6 rounded-full hover:bg-indigo-700 transition duration-300" aria-label="Get started with Aetherstore" tabindex="0">
-                Get Started
-            </button>
-        </section>
-    </main>
-
-    <footer class="bg-gray-800 text-white p-4 mt-8">
-        <div class="container mx-auto text-center">
-            <p>&copy; 2023 Aetherstore Engine. All rights reserved.</p>
-        </div>
-    </footer>
-
-    <!-- Include Three.js and your main JavaScript files here -->
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/three.js/r128/three.min.js"></script>
-    <!-- Add any additional JS files here -->
-    <!-- Service Worker Registration for 3D Asset Caching -->
-    <script>
-        if ('serviceWorker' in navigator) {
-            window.addEventListener('load', () => {
-                navigator.serviceWorker.register('/sw.js')
-                    .then(registration => {
-                        console.log('ServiceWorker registration successful with scope: ', registration.scope);
-                    })
-                    .catch(err => {
-                        console.log('ServiceWorker registration failed: ', err);
-                    });
-            });
-        }
-    </script>
-</body>
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>frontend</title>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>

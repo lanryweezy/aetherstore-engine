@@ -16,6 +16,7 @@ from vr_integration import VRService
 from blockchain_integration import DigitalOwnershipService
 from social_integration import SocialShoppingService
 from ai_consultant import AIConsultantService
+from api.physics import router as physics_router
 
 # Initialize FastAPI app
 app = FastAPI(
@@ -872,6 +873,8 @@ async def get_current_trends(category: str = None):
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
+
+app.include_router(physics_router)
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True)
