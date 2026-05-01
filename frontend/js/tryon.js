@@ -292,15 +292,75 @@ class TryOnManager {
                 const itemId = this.currentSession.productId;
                 await fetch(`/api/consultant/wardrobe/equip/${userId}/${itemId}`, { method: 'POST' });
                 console.log('Item equipped in digital wardrobe');
+
+                // Trigger wishlist / equip animation
+                this.triggerWishlistAnimation();
             } catch (err) {
                 console.warn('Could not persist equipment state:', err);
             }
             
-            // Close modal
-            this.cancelTryOn();
+            // Close modal after brief delay to show animation
+            setTimeout(() => {
+                this.cancelTryOn();
+            }, 1000);
         }
     }
     
+    triggerWishlistAnimation() {
+        const container = document.getElementById('tryon-container') || document.body;
+
+        // Create an array of colors for the particles
+        const colors = ['#ff3366', '#4ecdc4', '#ffe66d', '#6b5b95'];
+
+        // Create 30 particles
+        for (let i = 0; i < 30; i++) {
+            const particle = document.createElement('div');
+
+            // Randomize styling
+            const size = Math.random() * 15 + 5; // 5px to 20px
+            const color = colors[Math.floor(Math.random() * colors.length)];
+
+            particle.style.cssText = `
+                position: fixed;
+                top: 50%;
+                left: 50%;
+                width: ${size}px;
+                height: ${size}px;
+                background-color: ${color};
+                border-radius: ${Math.random() > 0.5 ? '50%' : '20%'};
+                pointer-events: none;
+                z-index: 10000;
+                transform: translate(-50%, -50%);
+                box-shadow: 0 0 ${size/2}px ${color};
+                opacity: 1;
+            `;
+
+            container.appendChild(particle);
+
+            // Animate
+            const angle = Math.random() * Math.PI * 2;
+            const velocity = Math.random() * 100 + 50;
+            const tx = Math.cos(angle) * velocity;
+            const ty = Math.sin(angle) * velocity;
+
+            particle.animate([
+                { transform: 'translate(-50%, -50%) scale(1)', opacity: 1 },
+                { transform: `translate(calc(-50% + ${tx}px), calc(-50% + ${ty}px)) scale(0)`, opacity: 0 }
+            ], {
+                duration: Math.random() * 500 + 500, // 500ms to 1000ms
+                easing: 'cubic-bezier(0.25, 0.46, 0.45, 0.94)',
+                fill: 'forwards'
+            });
+
+            // Cleanup
+            setTimeout(() => {
+                if (particle.parentNode) {
+                    particle.parentNode.removeChild(particle);
+                }
+            }, 1000);
+        }
+    }
+
     cancelTryOn() {
         // Cancel the try-on session
         console.log('Try-on session cancelled');

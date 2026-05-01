@@ -5,6 +5,8 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Aetherstore Admin Dashboard</title>
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <script src="https://cdn.babylonjs.com/babylon.js"></script>
+    <script src="https://cdn.babylonjs.com/loaders/babylonjs.loaders.min.js"></script>
     <style>
         * {
             margin: 0;
@@ -13,9 +15,66 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
+        :root {
+            --bg-color: #f5f7fa;
+            --text-color: #333;
+            --card-bg: white;
+            --border-color: #eee;
+            --sidebar-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a2e;
+            --text-color: #e6e6e6;
+            --card-bg: #16213e;
+            --border-color: #2c3e50;
+            --sidebar-bg: #0f3460;
+        }
+
         body {
-            background-color: #f5f7fa;
-            color: #333;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        .sidebar {
+            background: var(--sidebar-bg) !important;
+        }
+
+        .main-content {
+            background-color: var(--bg-color);
+        }
+
+        .dashboard-header {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        table th {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        table td {
+            border-color: var(--border-color);
+        }
+
+        .tab {
+            background-color: var(--bg-color);
+            border-color: var(--border-color);
+        }
+
+        .tab.active {
+            background-color: var(--card-bg);
+        }
+
+        .product-item {
+            border-color: var(--border-color);
         }
 
         .admin-container {
@@ -84,7 +143,17 @@
 
         .dashboard-header h1 {
             font-size: 2rem;
-            color: #2c3e50;
+            color: var(--text-color);
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 5px;
+            margin-left: 15px;
         }
 
         .metrics-grid {
@@ -95,7 +164,7 @@
         }
 
         .metric-card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -266,9 +335,10 @@
         <div class="main-content">
             <div class="dashboard-header">
                 <h1>Admin Dashboard</h1>
-                <div class="date-filter">
+                <div class="date-filter" style="display: flex; align-items: center;">
                     <input type="date" id="startDate" placeholder="Start Date">
                     <input type="date" id="endDate" placeholder="End Date">
+                    <button class="theme-toggle" id="themeToggle" aria-label="Toggle Dark Mode">🌙</button>
                 </div>
             </div>
 
@@ -301,6 +371,7 @@
                 <div class="tab" data-tab="trends">Trends</div>
                 <div class="tab" data-tab="products">Top Products</div>
                 <div class="tab" data-tab="stores">Store Performance</div>
+                <div class="tab" data-tab="heatmap">Heatmap</div>
             </div>
 
             <div class="tab-content active" id="overview-tab">
@@ -355,6 +426,20 @@
                     </div>
                 </div>
             </div>
+
+            <div class="tab-content" id="heatmap-tab">
+                <div class="chart-container" style="width: 100%; height: 600px; display: flex; flex-direction: column;">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px;">
+                        <h3>Store 3D Heatmap</h3>
+                        <select id="heatmapStoreSelect" style="padding: 8px; border-radius: 4px; border: 1px solid #ccc;">
+                            <option value="store_1">Store A</option>
+                            <option value="store_2">Store B</option>
+                            <option value="store_3">Store C</option>
+                        </select>
+                    </div>
+                    <canvas id="heatmapCanvas" style="flex: 1; width: 100%; border-radius: 8px; border: 1px solid #eee;"></canvas>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -371,6 +456,7 @@
                 this.setupEventListeners();
                 this.loadDashboardData();
                 this.initCharts();
+                this.initHeatmap();
             }
 
             setupEventListeners() {
@@ -389,6 +475,132 @@
                         this.showSection(section);
                     });
                 });
+
+                // Heatmap store selection
+                const storeSelect = document.getElementById('heatmapStoreSelect');
+                if (storeSelect) {
+                    storeSelect.addEventListener('change', (e) => {
+                        this.loadHeatmapData(e.target.value);
+                    });
+                }
+            }
+
+            async initHeatmap() {
+                this.heatmapCanvas = document.getElementById('heatmapCanvas');
+                if (!this.heatmapCanvas || typeof BABYLON === 'undefined') return;
+
+                this.heatmapEngine = new BABYLON.Engine(this.heatmapCanvas, true);
+                this.heatmapScene = new BABYLON.Scene(this.heatmapEngine);
+
+                // Camera
+                const camera = new BABYLON.ArcRotateCamera("heatmapCamera", -Math.PI/2, Math.PI/3, 20, BABYLON.Vector3.Zero(), this.heatmapScene);
+                camera.attachControl(this.heatmapCanvas, true);
+                camera.wheelPrecision = 50;
+
+                // Light
+                const light = new BABYLON.HemisphericLight("light", new BABYLON.Vector3(0, 1, 0), this.heatmapScene);
+                light.intensity = 0.7;
+
+                // Simple floor representing the store
+                const ground = BABYLON.MeshBuilder.CreateGround("ground", {width: 20, height: 20}, this.heatmapScene);
+                const groundMat = new BABYLON.StandardMaterial("groundMat", this.heatmapScene);
+                groundMat.diffuseColor = new BABYLON.Color3(0.2, 0.2, 0.2);
+                groundMat.alpha = 0.5;
+                ground.material = groundMat;
+
+                // Simple walls
+                const wall1 = BABYLON.MeshBuilder.CreatePlane("wall1", {width: 20, height: 5}, this.heatmapScene);
+                wall1.position.z = 10;
+                wall1.position.y = 2.5;
+                const wallMat = new BABYLON.StandardMaterial("wallMat", this.heatmapScene);
+                wallMat.diffuseColor = new BABYLON.Color3(0.8, 0.8, 0.8);
+                wallMat.alpha = 0.3;
+                wall1.material = wallMat;
+
+                const wall2 = BABYLON.MeshBuilder.CreatePlane("wall2", {width: 20, height: 5}, this.heatmapScene);
+                wall2.position.z = -10;
+                wall2.position.y = 2.5;
+                wall2.rotation.y = Math.PI;
+                wall2.material = wallMat;
+
+                const wall3 = BABYLON.MeshBuilder.CreatePlane("wall3", {width: 20, height: 5}, this.heatmapScene);
+                wall3.position.x = -10;
+                wall3.position.y = 2.5;
+                wall3.rotation.y = -Math.PI / 2;
+                wall3.material = wallMat;
+
+                this.heatmapPoints = [];
+
+                this.heatmapEngine.runRenderLoop(() => {
+                    this.heatmapScene.render();
+                });
+
+                window.addEventListener("resize", () => {
+                    this.heatmapEngine.resize();
+                });
+
+                // Load initial data
+                const storeSelect = document.getElementById('heatmapStoreSelect');
+                if (storeSelect) {
+                    this.loadHeatmapData(storeSelect.value);
+                }
+            }
+
+            async loadHeatmapData(storeId) {
+                if (!this.heatmapScene) return;
+
+                // Clear previous points
+                this.heatmapPoints.forEach(p => p.dispose());
+                this.heatmapPoints = [];
+
+                try {
+                    // Fetch from backend API
+                    let response = null;
+                    try {
+                        const apiRes = await fetch(`/api/analytics/heatmap/${storeId}`);
+                        if (apiRes.ok) {
+                            response = await apiRes.json();
+                        }
+                    } catch (e) {
+                        console.warn("Could not fetch real heatmap data, using mock data", e);
+                    }
+
+                    let points = [];
+                    if (response && response.spatial_heatmap_3d) {
+                        points = response.spatial_heatmap_3d;
+                    } else {
+                        // Mock data for demonstration if API fails or is empty
+                        for (let i = 0; i < 50; i++) {
+                            points.push({
+                                x: (Math.random() - 0.5) * 18,
+                                y: Math.random() * 4,
+                                z: (Math.random() - 0.5) * 18,
+                                intensity: Math.random()
+                            });
+                        }
+                    }
+
+                    // Render spheres for each spatial point
+                    points.forEach(pt => {
+                        const sphere = BABYLON.MeshBuilder.CreateSphere("heatPoint", {diameter: 0.5}, this.heatmapScene);
+                        sphere.position.x = pt.x || 0;
+                        sphere.position.y = pt.y || 0;
+                        sphere.position.z = pt.z || 0;
+
+                        const mat = new BABYLON.StandardMaterial("heatMat", this.heatmapScene);
+                        // Blue to Red gradient based on intensity, default to red if no intensity
+                        const intensity = pt.intensity !== undefined ? pt.intensity : 0.8;
+                        mat.diffuseColor = new BABYLON.Color3(intensity, 0, 1 - intensity);
+                        mat.emissiveColor = new BABYLON.Color3(intensity * 0.8, 0, (1 - intensity) * 0.8);
+                        mat.alpha = 0.7;
+
+                        sphere.material = mat;
+                        this.heatmapPoints.push(sphere);
+                    });
+
+                } catch (error) {
+                    console.error('Error loading heatmap data:', error);
+                }
             }
 
             switchTab(tabName) {
@@ -407,6 +619,13 @@
 
                 // Add active class to clicked tab
                 event.target.classList.add('active');
+
+                // Resize engine if heatmap tab
+                if (tabName === 'heatmap' && this.heatmapEngine) {
+                    setTimeout(() => {
+                        this.heatmapEngine.resize();
+                    }, 100);
+                }
             }
 
             showSection(section) {
@@ -465,6 +684,25 @@
             updateTopProducts() {
                 const topProductsList = document.getElementById('topProductsList');
                 topProductsList.innerHTML = '';
+
+                if (!this.data.topProducts || this.data.topProducts.length === 0) {
+                    for (let i = 0; i < 3; i++) {
+                        const skeletonItem = document.createElement('li');
+                        skeletonItem.className = 'product-item skeleton-container';
+                        skeletonItem.innerHTML = `
+                            <div class="product-info" style="width: 50%;">
+                                <div class="skeleton-title" style="margin-bottom: 5px;"></div>
+                                <div class="skeleton-text" style="width: 60%; height: 10px;"></div>
+                            </div>
+                            <div class="product-stats" style="width: 40%; display: flex; flex-direction: column; align-items: flex-end;">
+                                <div class="skeleton-text" style="width: 70%; margin-bottom: 5px;"></div>
+                                <div class="skeleton-text" style="width: 50%;"></div>
+                            </div>
+                        `;
+                        topProductsList.appendChild(skeletonItem);
+                    }
+                    return;
+                }
 
                 this.data.topProducts.forEach((product, index) => {
                     const productItem = document.createElement('li');
@@ -730,6 +968,32 @@
         // Initialize dashboard when page loads
         document.addEventListener('DOMContentLoaded', () => {
             window.adminDashboard = new AdminDashboard();
+
+            // Dark Mode Toggle Logic
+            const themeToggle = document.getElementById('themeToggle');
+            const root = document.documentElement;
+
+            // Check for saved theme preference or OS preference
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                root.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️';
+            }
+
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = root.getAttribute('data-theme');
+                if (currentTheme === 'dark') {
+                    root.removeAttribute('data-theme');
+                    localStorage.setItem('theme', 'light');
+                    themeToggle.textContent = '🌙';
+                } else {
+                    root.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('theme', 'dark');
+                    themeToggle.textContent = '☀️';
+                }
+            });
         });
     </script>
 </body>

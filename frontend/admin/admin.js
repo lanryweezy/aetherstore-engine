@@ -8,25 +8,207 @@ class AdminInterface {
         this.currentTemplate = 'modern-gallery';
         this.currentLayout = 'grid';
         
+        // History state for undo/redo
+        this.history = [];
+        this.historyIndex = -1;
+
         this.init();
     }
     
+    saveState() {
+        // Remove redo stack if we save a new state while not at the end
+        if (this.historyIndex < this.history.length - 1) {
+            this.history = this.history.slice(0, this.historyIndex + 1);
+        }
+
+        const state = {
+            template: this.currentTemplate,
+            layout: this.currentLayout
+        };
+
+        this.history.push(state);
+        this.historyIndex++;
+        this.updateUndoRedoButtons();
+    }
+
+    undo() {
+        if (this.historyIndex > 0) {
+            this.historyIndex--;
+            const state = this.history[this.historyIndex];
+            this.applyState(state);
+            this.updateUndoRedoButtons();
+        }
+    }
+
+    redo() {
+        if (this.historyIndex < this.history.length - 1) {
+            this.historyIndex++;
+            const state = this.history[this.historyIndex];
+            this.applyState(state);
+            this.updateUndoRedoButtons();
+        }
+    }
+
+    applyState(state) {
+        if (!state) return;
+
+        this.currentTemplate = state.template;
+        this.currentLayout = state.layout;
+
+        // Update UI
+        document.querySelectorAll('.template-item').forEach(item => {
+            if (item.getAttribute('data-template') === this.currentTemplate) {
+                item.classList.add('active');
+            } else {
+                item.classList.remove('active');
+            }
+        });
+
+        document.querySelectorAll('.layout-option').forEach(option => {
+            if (option.getAttribute('data-layout') === this.currentLayout) {
+                option.classList.add('active');
+            } else {
+                option.classList.remove('active');
+            }
+        });
+
+        this.updateStorePreview();
+    }
+
+    updateUndoRedoButtons() {
+        const undoBtn = document.getElementById('undo-store');
+        const redoBtn = document.getElementById('redo-store');
+
+        if (undoBtn) undoBtn.disabled = this.historyIndex <= 0;
+        if (redoBtn) redoBtn.disabled = this.historyIndex >= this.history.length - 1;
+    }
+
     init() {
         console.log('Initializing Aetherstore Admin Interface...');
         
         // Set up event listeners
         this.setupEventListeners();
         
+        // Setup Drag and Drop
+        this.setupDragAndDrop();
+
         // Load initial data
         this.loadProducts();
         
         // Set up navigation
         this.setupNavigation();
         
+        // Initial state save
+        this.saveState();
+
         // Show dashboard by default
         this.showSection('dashboard');
     }
     
+    setupDragAndDrop() {
+        // Global drag events for the window
+        ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+            document.body.addEventListener(eventName, preventDefaults, false);
+        });
+
+        function preventDefaults(e) {
+            e.preventDefault();
+            e.stopPropagation();
+        }
+
+        const dropZoneElement = document.querySelector(".drop-zone");
+        if (!dropZoneElement) return;
+
+        const inputElement = dropZoneElement.querySelector(".drop-zone__input");
+
+        dropZoneElement.addEventListener("click", (e) => {
+            inputElement.click();
+        });
+
+        inputElement.addEventListener("change", (e) => {
+            if (inputElement.files.length) {
+                this.updateThumbnail(dropZoneElement, inputElement.files[0]);
+            }
+        });
+
+        dropZoneElement.addEventListener("dragover", (e) => {
+            dropZoneElement.classList.add("drop-zone--over");
+        });
+
+        ["dragleave", "dragend"].forEach((type) => {
+            dropZoneElement.addEventListener(type, (e) => {
+                dropZoneElement.classList.remove("drop-zone--over");
+            });
+        });
+
+        // Add file drop logic to the window so the entire screen can receive files
+        document.body.addEventListener("drop", (e) => {
+            // Check if we're on the products tab before accepting drop
+            if (this.currentView !== 'products') return;
+
+            const file = e.dataTransfer.files[0];
+            if (file && (file.name.endsWith('.glb') || file.name.endsWith('.gltf'))) {
+                 // Try to open the add product modal if it's not open
+                 const modal = document.getElementById('product-modal');
+                 if (modal && modal.style.display !== 'block') {
+                     // Need to trigger the actual UI button or method
+                     const btn = document.getElementById('add-product-btn');
+                     if (btn) btn.click();
+                 }
+
+                 // Update the drop zone specifically
+                 const dropZone = document.querySelector(".drop-zone");
+                 if (dropZone) {
+                    inputElement.files = e.dataTransfer.files;
+                    this.updateThumbnail(dropZone, file);
+                    dropZone.classList.remove("drop-zone--over");
+                 }
+            } else if (file) {
+                alert("Only .glb or .gltf files are supported for 3D models.");
+            }
+        });
+
+        dropZoneElement.addEventListener("drop", (e) => {
+            e.stopPropagation(); // Stop the body drop event from firing
+            if (e.dataTransfer.files.length) {
+                inputElement.files = e.dataTransfer.files;
+                this.updateThumbnail(dropZoneElement, e.dataTransfer.files[0]);
+            }
+            dropZoneElement.classList.remove("drop-zone--over");
+        });
+    }
+
+    updateThumbnail(dropZoneElement, file) {
+        let thumbnailElement = dropZoneElement.querySelector(".drop-zone__thumb");
+
+        // First time - remove the prompt
+        if (dropZoneElement.querySelector(".drop-zone__prompt")) {
+            dropZoneElement.querySelector(".drop-zone__prompt").remove();
+        }
+
+        // First time - there is no thumbnail element, so lets create it
+        if (!thumbnailElement) {
+            thumbnailElement = document.createElement("div");
+            thumbnailElement.classList.add("drop-zone__thumb");
+            dropZoneElement.appendChild(thumbnailElement);
+        }
+
+        thumbnailElement.dataset.label = file.name;
+
+        // Show a placeholder for 3D files since we can't easily preview them in standard img
+        thumbnailElement.style.backgroundImage = 'none';
+        thumbnailElement.style.display = 'flex';
+        thumbnailElement.style.alignItems = 'center';
+        thumbnailElement.style.justifyContent = 'center';
+        thumbnailElement.innerHTML = '<span>📦 3D Model Selected</span>';
+
+        // Update the actual preview container message
+        const previewContainer = document.getElementById('model-preview-container');
+        if (previewContainer) {
+            previewContainer.innerHTML = `<p>File loaded: ${file.name} (${(file.size / 1024 / 1024).toFixed(2)} MB)</p>`;
+        }
+    }
+
     setupEventListeners() {
         // Navigation links
         document.querySelectorAll('.nav-link').forEach(link => {
@@ -58,6 +240,14 @@ class AdminInterface {
             this.enterStorePreview();
         });
         
+        document.getElementById('undo-store')?.addEventListener('click', () => {
+            this.undo();
+        });
+
+        document.getElementById('redo-store')?.addEventListener('click', () => {
+            this.redo();
+        });
+
         document.getElementById('save-store')?.addEventListener('click', () => {
             this.saveStoreDesign();
         });
@@ -166,6 +356,7 @@ class AdminInterface {
         
         // Update store preview
         this.updateStorePreview();
+        this.saveState();
     }
     
     selectLayout(layout) {
@@ -181,6 +372,7 @@ class AdminInterface {
         
         // Update store preview
         this.updateStorePreview();
+        this.saveState();
     }
     
     updateStorePreviewColor(type, color) {
@@ -322,6 +514,27 @@ class AdminInterface {
         const productGrid = document.querySelector('.product-grid');
         productGrid.innerHTML = '';
         
+        // Show skeleton loading if products are empty (simulating loading state)
+        if (!this.products || this.products.length === 0) {
+            for (let i = 0; i < 4; i++) {
+                const skeletonCard = document.createElement('div');
+                skeletonCard.className = 'product-card skeleton-container';
+                skeletonCard.style.padding = '15px';
+                skeletonCard.innerHTML = `
+                    <div class="skeleton-image"></div>
+                    <div class="skeleton-title"></div>
+                    <div class="skeleton-text"></div>
+                    <div class="skeleton-text" style="width: 50%;"></div>
+                    <div style="display: flex; gap: 10px; margin-top: 15px;">
+                        <div class="skeleton-button" style="width: 50%;"></div>
+                        <div class="skeleton-button" style="width: 50%;"></div>
+                    </div>
+                `;
+                productGrid.appendChild(skeletonCard);
+            }
+            return;
+        }
+
         this.products.forEach(product => {
             const productCard = document.createElement('div');
             productCard.className = 'product-card';
