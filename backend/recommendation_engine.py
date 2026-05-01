@@ -14,6 +14,7 @@ from dataclasses import dataclass
 import asyncio
 from datetime import datetime
 import random
+from shift15m_engine import Shift15MEngine
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -351,9 +352,10 @@ class HybridRecommendationEngine:
         self.collaborative_filter = CollaborativeFilteringEngine()
         self.content_filter = ContentBasedFilteringEngine()
         self.deep_learning = DeepLearningRecommendationEngine()
+        self.shift_engine = Shift15MEngine()
         self.user_profiles = {}
         
-        logger.info("Hybrid Recommendation Engine initialized")
+        logger.info("Hybrid Recommendation Engine initialized with SHIFT15M Intelligence")
     
     async def train(self, interactions: List[Dict], users: List[Dict], items: List[Dict]):
         """Train all recommendation models"""
@@ -362,6 +364,9 @@ class HybridRecommendationEngine:
         # Train collaborative filtering
         if interactions:
             self.collaborative_filter.train(interactions)
+            # Use historical vs current interactions for shift analysis
+            mid = len(interactions) // 2
+            self.shift_engine.calculate_distribution_shift(interactions[mid:], interactions[:mid])
         
         # Train content-based filtering
         if items:
@@ -377,7 +382,7 @@ class HybridRecommendationEngine:
         logger.info("All recommendation models trained successfully")
     
     async def get_recommendations(self, user_id: str, n_recommendations: int = 10) -> List[RecommendationResult]:
-        """Get hybrid recommendations for a user"""
+        """Get hybrid recommendations for a user with distribution shift awareness"""
         all_recommendations = []
         
         # Get recommendations from each engine
@@ -390,15 +395,25 @@ class HybridRecommendationEngine:
         all_recommendations.extend(cb_recs)
         all_recommendations.extend(dl_recs)
         
-        # Remove duplicates while preserving scores
+        # Remove duplicates while preserving scores and applying shift weights
         unique_recs = {}
         for rec in all_recommendations:
+            # Apply SHIFT15M weights to favor trending categories
+            final_score = self.shift_engine.apply_shift_weights(rec.product_id, rec.score, rec.category)
+            
             if rec.product_id not in unique_recs:
-                unique_recs[rec.product_id] = rec
+                unique_recs[rec.product_id] = RecommendationResult(
+                    product_id=rec.product_id,
+                    score=final_score,
+                    reason=rec.reason,
+                    category=rec.category,
+                    brand_affinity=rec.brand_affinity,
+                    style_compatibility=rec.style_compatibility
+                )
             else:
                 # Combine scores with weights
                 existing = unique_recs[rec.product_id]
-                combined_score = (existing.score * 0.6) + (rec.score * 0.4)  # Weighted average
+                combined_score = (existing.score * 0.6) + (final_score * 0.4)
                 unique_recs[rec.product_id] = RecommendationResult(
                     product_id=rec.product_id,
                     score=combined_score,
