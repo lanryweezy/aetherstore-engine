@@ -13,9 +13,66 @@
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
         }
 
+        :root {
+            --bg-color: #f5f7fa;
+            --text-color: #333;
+            --card-bg: white;
+            --border-color: #eee;
+            --sidebar-bg: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        }
+
+        [data-theme="dark"] {
+            --bg-color: #1a1a2e;
+            --text-color: #e6e6e6;
+            --card-bg: #16213e;
+            --border-color: #2c3e50;
+            --sidebar-bg: #0f3460;
+        }
+
         body {
-            background-color: #f5f7fa;
-            color: #333;
+            background-color: var(--bg-color);
+            color: var(--text-color);
+            transition: background-color 0.3s, color 0.3s;
+        }
+
+        .card {
+            background: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        .sidebar {
+            background: var(--sidebar-bg) !important;
+        }
+
+        .main-content {
+            background-color: var(--bg-color);
+        }
+
+        .dashboard-header {
+            background-color: var(--card-bg);
+            border-color: var(--border-color);
+        }
+
+        table th {
+            background-color: var(--bg-color);
+            color: var(--text-color);
+        }
+
+        table td {
+            border-color: var(--border-color);
+        }
+
+        .tab {
+            background-color: var(--bg-color);
+            border-color: var(--border-color);
+        }
+
+        .tab.active {
+            background-color: var(--card-bg);
+        }
+
+        .product-item {
+            border-color: var(--border-color);
         }
 
         .admin-container {
@@ -84,7 +141,17 @@
 
         .dashboard-header h1 {
             font-size: 2rem;
-            color: #2c3e50;
+            color: var(--text-color);
+        }
+
+        .theme-toggle {
+            background: none;
+            border: none;
+            color: var(--text-color);
+            cursor: pointer;
+            font-size: 1.2rem;
+            padding: 5px;
+            margin-left: 15px;
         }
 
         .metrics-grid {
@@ -95,7 +162,7 @@
         }
 
         .metric-card {
-            background: white;
+            background: var(--card-bg);
             border-radius: 12px;
             padding: 20px;
             box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
@@ -266,9 +333,10 @@
         <div class="main-content">
             <div class="dashboard-header">
                 <h1>Admin Dashboard</h1>
-                <div class="date-filter">
+                <div class="date-filter" style="display: flex; align-items: center;">
                     <input type="date" id="startDate" placeholder="Start Date">
                     <input type="date" id="endDate" placeholder="End Date">
+                    <button class="theme-toggle" id="themeToggle" aria-label="Toggle Dark Mode">🌙</button>
                 </div>
             </div>
 
@@ -465,6 +533,25 @@
             updateTopProducts() {
                 const topProductsList = document.getElementById('topProductsList');
                 topProductsList.innerHTML = '';
+
+                if (!this.data.topProducts || this.data.topProducts.length === 0) {
+                    for (let i = 0; i < 3; i++) {
+                        const skeletonItem = document.createElement('li');
+                        skeletonItem.className = 'product-item skeleton-container';
+                        skeletonItem.innerHTML = `
+                            <div class="product-info" style="width: 50%;">
+                                <div class="skeleton-title" style="margin-bottom: 5px;"></div>
+                                <div class="skeleton-text" style="width: 60%; height: 10px;"></div>
+                            </div>
+                            <div class="product-stats" style="width: 40%; display: flex; flex-direction: column; align-items: flex-end;">
+                                <div class="skeleton-text" style="width: 70%; margin-bottom: 5px;"></div>
+                                <div class="skeleton-text" style="width: 50%;"></div>
+                            </div>
+                        `;
+                        topProductsList.appendChild(skeletonItem);
+                    }
+                    return;
+                }
 
                 this.data.topProducts.forEach((product, index) => {
                     const productItem = document.createElement('li');
@@ -730,6 +817,32 @@
         // Initialize dashboard when page loads
         document.addEventListener('DOMContentLoaded', () => {
             window.adminDashboard = new AdminDashboard();
+
+            // Dark Mode Toggle Logic
+            const themeToggle = document.getElementById('themeToggle');
+            const root = document.documentElement;
+
+            // Check for saved theme preference or OS preference
+            const savedTheme = localStorage.getItem('theme');
+            const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+
+            if (savedTheme === 'dark' || (!savedTheme && prefersDark)) {
+                root.setAttribute('data-theme', 'dark');
+                themeToggle.textContent = '☀️';
+            }
+
+            themeToggle.addEventListener('click', () => {
+                const currentTheme = root.getAttribute('data-theme');
+                if (currentTheme === 'dark') {
+                    root.removeAttribute('data-theme');
+                    localStorage.setItem('theme', 'light');
+                    themeToggle.textContent = '🌙';
+                } else {
+                    root.setAttribute('data-theme', 'dark');
+                    localStorage.setItem('theme', 'dark');
+                    themeToggle.textContent = '☀️';
+                }
+            });
         });
     </script>
 </body>
