@@ -4,8 +4,9 @@ import Hero from './components/Hero';
 import Features from './components/Features';
 import Footer from './components/Footer';
 import Scene3D from './components/Scene3D';
+import Storefront from './components/Storefront';
 import axios from 'axios';
-import { Ruler, Trash2, Camera, Loader2 } from 'lucide-react';
+import { Ruler, Trash2, Camera, Loader2, Sparkles } from 'lucide-react';
 
 function App() {
   const [measurements, setMeasurements] = useState({
@@ -14,11 +15,18 @@ function App() {
     waist: 80,
     hips: 95
   });
+  const [selectedProduct, setSelectedProduct] = useState<any>(null);
   const [isScanning, setIsScanning] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleMeasurementChange = (key: keyof typeof measurements, val: number) => {
     setMeasurements(prev => ({ ...prev, [key]: val }));
+  };
+
+  const handleProductSelect = (product: any) => {
+    setSelectedProduct(product);
+    // Scroll to try-on section
+    document.getElementById('try-on-viewer')?.scrollIntoView({ behavior: 'smooth' });
   };
 
   const handleAIScan = async (event: React.ChangeEvent<HTMLInputElement>) => {
@@ -53,9 +61,12 @@ function App() {
       
       <main className="flex-grow">
         <Hero />
+
+        {/* Storefront Section */}
+        <Storefront onSelectProduct={handleProductSelect} />
         
         {/* Virtual Try-On Section */}
-        <section className="py-24 px-6 bg-slate-900/50">
+        <section id="try-on-viewer" className="py-24 px-6 bg-slate-900/50">
           <div className="container mx-auto">
             <div className="flex flex-col lg:flex-row gap-12 items-start">
               
@@ -115,6 +126,19 @@ function App() {
                   </div>
                 </div>
 
+                {selectedProduct && (
+                  <div className="p-8 bg-slate-800 border border-primary-500/30 rounded-3xl space-y-4 animate-in fade-in slide-in-from-bottom-4 duration-500">
+                    <div className="flex items-center gap-2 text-primary-400 text-xs font-bold uppercase tracking-widest">
+                      <Sparkles className="w-3 h-3" /> Selected for Try-On
+                    </div>
+                    <h4 className="text-2xl font-bold">{selectedProduct.name}</h4>
+                    <p className="text-slate-400 text-sm">{selectedProduct.description}</p>
+                    <button className="w-full py-4 bg-gradient-to-r from-primary-600 to-indigo-600 rounded-xl font-black text-xs uppercase tracking-widest shadow-lg shadow-primary-900/20">
+                      Simulate Fabric Physics
+                    </button>
+                  </div>
+                )}
+
                 <div className="p-6 bg-indigo-900/10 border border-indigo-500/20 rounded-2xl">
                   <p className="text-xs text-indigo-300 leading-relaxed italic">
                     "Our AI uses the SHIFT15M dataset to predict how these measurements affect garment drape across 15 million reference points."
@@ -125,21 +149,19 @@ function App() {
               {/* 3D Viewer Area */}
               <div className="flex-1 w-full">
                 <Scene3D measurements={measurements} />
-                <div className="mt-8 flex gap-4 overflow-x-auto pb-4 custom-scrollbar">
-                  {[1, 2, 3, 4].map(i => (
-                    <button key={i} className="w-24 h-24 shrink-0 bg-slate-800 border border-slate-700 rounded-2xl hover:border-primary-500 transition-all overflow-hidden relative group">
-                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950/80 to-transparent flex items-end justify-center p-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <span className="text-[10px] font-bold text-white uppercase tracking-tighter">Try On</span>
-                      </div>
-                      <div className="w-full h-full bg-slate-700 animate-pulse" />
-                    </button>
-                  ))}
-                </div>
               </div>
 
             </div>
           </div>
         </section>
+
+        <Features />
+      </main>
+
+      <Footer />
+    </div>
+  );
+}
 
         <Features />
       </main>
