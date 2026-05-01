@@ -2,7 +2,7 @@
 # Store management API endpoints for Aetherstore Engine
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -47,8 +47,7 @@ class StoreResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/", response_model=StoreResponse, status_code=status.HTTP_201_CREATED)
 async def create_new_store(store: StoreCreate, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
