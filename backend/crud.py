@@ -17,11 +17,11 @@ logger = logging.getLogger(__name__)
 # User CRUD operations
 def get_user(db: Session, user_id: str) -> Optional[User]:
     """Get user by ID"""
-    return db.query(User).filter(User.id == user_id).first()
+    return db.query(User).filter(User.id == user_id, User.deleted_at == None).first()
 
 def get_user_by_email(db: Session, email: str) -> Optional[User]:
     """Get user by email"""
-    return db.query(User).filter(User.email == email).first()
+    return db.query(User).filter(User.email == email, User.deleted_at == None).first()
 
 def create_user(db: Session, user_data: Dict[str, Any]) -> User:
     """Create a new user"""
@@ -42,10 +42,10 @@ def update_user(db: Session, user_id: str, user_data: Dict[str, Any]) -> Optiona
     return db_user
 
 def delete_user(db: Session, user_id: str) -> bool:
-    """Delete user by ID"""
+    """Soft delete user by ID"""
     db_user = get_user(db, user_id)
     if db_user:
-        db.delete(db_user)
+        db_user.deleted_at = datetime.utcnow()
         db.commit()
         return True
     return False
@@ -53,11 +53,11 @@ def delete_user(db: Session, user_id: str) -> bool:
 # Brand CRUD operations
 def get_brand(db: Session, brand_id: str) -> Optional[Brand]:
     """Get brand by ID"""
-    return db.query(Brand).filter(Brand.id == brand_id).first()
+    return db.query(Brand).filter(Brand.id == brand_id, Brand.deleted_at == None).first()
 
 def get_brands_by_owner(db: Session, owner_user_id: str) -> List[Brand]:
     """Get all brands owned by a user"""
-    return db.query(Brand).filter(Brand.owner_user_id == owner_user_id).all()
+    return db.query(Brand).filter(Brand.owner_user_id == owner_user_id, Brand.deleted_at == None).all()
 
 def create_brand(db: Session, brand_data: Dict[str, Any]) -> Brand:
     """Create a new brand"""
@@ -78,10 +78,10 @@ def update_brand(db: Session, brand_id: str, brand_data: Dict[str, Any]) -> Opti
     return db_brand
 
 def delete_brand(db: Session, brand_id: str) -> bool:
-    """Delete brand by ID"""
+    """Soft delete brand by ID"""
     db_brand = get_brand(db, brand_id)
     if db_brand:
-        db.delete(db_brand)
+        db_brand.deleted_at = datetime.utcnow()
         db.commit()
         return True
     return False
@@ -89,11 +89,11 @@ def delete_brand(db: Session, brand_id: str) -> bool:
 # Store CRUD operations
 def get_store(db: Session, store_id: str) -> Optional[Store]:
     """Get store by ID"""
-    return db.query(Store).filter(Store.id == store_id).first()
+    return db.query(Store).filter(Store.id == store_id, Store.deleted_at == None).first()
 
 def get_stores_by_brand(db: Session, brand_id: str) -> List[Store]:
     """Get all stores for a brand"""
-    return db.query(Store).filter(Store.brand_id == brand_id).all()
+    return db.query(Store).filter(Store.brand_id == brand_id, Store.deleted_at == None).all()
 
 def create_store(db: Session, store_data: Dict[str, Any]) -> Store:
     """Create a new store"""
@@ -114,10 +114,10 @@ def update_store(db: Session, store_id: str, store_data: Dict[str, Any]) -> Opti
     return db_store
 
 def delete_store(db: Session, store_id: str) -> bool:
-    """Delete store by ID"""
+    """Soft delete store by ID"""
     db_store = get_store(db, store_id)
     if db_store:
-        db.delete(db_store)
+        db_store.deleted_at = datetime.utcnow()
         db.commit()
         return True
     return False
@@ -125,15 +125,15 @@ def delete_store(db: Session, store_id: str) -> bool:
 # Product CRUD operations
 def get_product(db: Session, product_id: str) -> Optional[Product]:
     """Get product by ID"""
-    return db.query(Product).filter(Product.id == product_id).first()
+    return db.query(Product).filter(Product.id == product_id, Product.deleted_at == None).first()
 
 def get_products_by_brand(db: Session, brand_id: str) -> List[Product]:
     """Get all products for a brand"""
-    return db.query(Product).filter(Product.brand_id == brand_id).all()
+    return db.query(Product).filter(Product.brand_id == brand_id, Product.deleted_at == None).all()
 
 def get_products_by_store(db: Session, store_id: str) -> List[Product]:
     """Get all products for a store"""
-    return db.query(Product).filter(Product.store_id == store_id).all()
+    return db.query(Product).filter(Product.store_id == store_id, Product.deleted_at == None).all()
 
 def _product_to_dict(product: Product) -> Dict[str, Any]:
     return {
@@ -179,10 +179,10 @@ def update_product(db: Session, product_id: str, product_data: Dict[str, Any]) -
     return db_product
 
 def delete_product(db: Session, product_id: str) -> bool:
-    """Delete product by ID"""
+    """Soft delete product by ID"""
     db_product = get_product(db, product_id)
     if db_product:
-        db.delete(db_product)
+        db_product.deleted_at = datetime.utcnow()
         db.commit()
 
         # Remove from Meilisearch

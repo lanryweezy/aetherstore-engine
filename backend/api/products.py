@@ -69,6 +69,7 @@ class ProductResponse(BaseModel):
     dimensions: Optional[Dict[str, Any]] = {}
     care_instructions: Optional[str] = None
     model_3d_url: Optional[str] = None
+    signed_3d_url: Optional[str] = None # Added for secure CDN delivery without modifying ORM
     textures_urls: Optional[List[str]] = []
     physics_properties: Optional[Dict[str, Any]] = {}
     stock_quantity: int
@@ -128,7 +129,7 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
                        current_user = Depends(get_current_active_user),
                        db: Session = Depends(get_db)):
     """List products with optional filtering"""
-    query = db.query(Product)
+    query = db.query(Product).filter(Product.deleted_at == None)
     if brand_id:
         query = query.filter(Product.brand_id == brand_id)
     if store_id:
@@ -138,12 +139,15 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
 
     results = query.offset(skip).limit(limit).all()
 
-    # Sign URLs for list results
+    # Sign URLs for list results safely without mutating ORM objects
+    response_list = []
     for product in results:
-        if product.model_3d_url:
-            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+        prod_dict = ProductResponse.model_validate(product).model_dump()
+        if prod_dict.get('model_3d_url'):
+            prod_dict['signed_3d_url'] = storage_service.get_presigned_url(prod_dict['model_3d_url'])
+        response_list.append(prod_dict)
 
-    return results
+    return response_list
 
 from storage_service import storage_service
 
@@ -155,10 +159,11 @@ async def read_product(product_id: str, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="Product not found")
 
     # Generate pre-signed secure CDN URL for the heavy 3D asset
-    if db_product.model_3d_url:
-        db_product.model_3d_url = storage_service.get_presigned_url(db_product.model_3d_url)
+    prod_dict = ProductResponse.model_validate(db_product).model_dump()
+    if prod_dict.get('model_3d_url'):
+        prod_dict['signed_3d_url'] = storage_service.get_presigned_url(prod_dict['model_3d_url'])
 
-    return db_product
+    return prod_dict
 
 @router.put("/{product_id}", response_model=ProductResponse)
 async def update_existing_product(product_id: str, product: ProductUpdate, 
@@ -374,7 +379,7 @@ async def search_products_advanced(
     else:
         # Fallback to slow SQL ILIKE search if Meilisearch is disabled/offline
         logger.warning("Meilisearch offline. Falling back to SQL ILIKE search.")
-        query = db.query(Product)
+        query = db.query(Product).filter(Product.deleted_at == None)
 
         if q:
             from sqlalchemy import String
@@ -401,11 +406,14 @@ async def search_products_advanced(
         results = query.all()
 
     # Sign URLs for search results
+    response_list = []
     for product in results:
-        if product.model_3d_url:
-            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+        prod_dict = ProductResponse.model_validate(product).model_dump()
+        if prod_dict.get('model_3d_url'):
+            prod_dict['signed_3d_url'] = storage_service.get_presigned_url(prod_dict['model_3d_url'])
+        response_list.append(prod_dict)
 
-    return results
+    return response_list
 
 # Social Proof & Reviews System
 from models import ProductReview

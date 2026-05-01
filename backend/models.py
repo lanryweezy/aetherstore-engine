@@ -2,7 +2,7 @@
 # SQLAlchemy models for Aetherstore Engine database tables
 
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, JSON, ForeignKey, UUID
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declared_attr
 from sqlalchemy.sql import func
 from database import Base
 import uuid
@@ -13,11 +13,27 @@ from datetime import datetime
 def generate_uuid():
     return str(uuid.uuid4())
 
-class User(Base):
+class SoftDeleteMixin:
+    """Mixin for models that should be soft-deleted instead of hard-deleted"""
+    @declared_attr
+    def deleted_at(cls):
+        return Column(DateTime(timezone=True), nullable=True)
+
+    @property
+    def is_deleted(self) -> bool:
+        return self.deleted_at is not None
+
+from sqlalchemy import Index, text
+
+class User(Base, SoftDeleteMixin):
     __tablename__ = "users"
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
-    email = Column(String(255), unique=True, nullable=False)
+    email = Column(String(255), nullable=False) # Unique constraint moved to Index to support soft deletes
+
+    __table_args__ = (
+        Index('ix_users_email_unique', 'email', unique=True, postgresql_where=text("deleted_at IS NULL")),
+    )
     name = Column(String(255), nullable=False)
     password_hash = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), server_default=func.now())
@@ -31,7 +47,7 @@ class User(Base):
     shopping_carts = relationship("ShoppingCart", back_populates="user")
     orders = relationship("Order", back_populates="user")
 
-class Brand(Base):
+class Brand(Base, SoftDeleteMixin):
     __tablename__ = "brands"
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
@@ -49,7 +65,7 @@ class Brand(Base):
     stores = relationship("Store", back_populates="brand")
     products = relationship("Product", back_populates="brand")
 
-class Store(Base):
+class Store(Base, SoftDeleteMixin):
     __tablename__ = "stores"
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
@@ -71,7 +87,7 @@ class Store(Base):
     tryon_sessions = relationship("TryOnSession", back_populates="store")
     analytics = relationship("StoreAnalytics", back_populates="store")
 
-class Product(Base):
+class Product(Base, SoftDeleteMixin):
     __tablename__ = "products"
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
@@ -217,10 +233,14 @@ class OrderItem(Base):
 
 class StoreAnalytics(Base):
     __tablename__ = "store_analytics"
+    __table_args__ = {
+        'postgresql_partition_by': 'RANGE (date)'
+    }
     
+    # In partitioned tables, the partition key must be part of the primary key
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
     store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="CASCADE"))
-    date = Column(DateTime(timezone=False), nullable=False)
+    date = Column(DateTime(timezone=False), primary_key=True, nullable=False)
     page_views = Column(Integer, default=0)
     unique_visitors = Column(Integer, default=0)
     session_duration_seconds = Column(Integer, default=0)
@@ -380,14 +400,18 @@ class StyleBoard(Base):
 
 class UserActivity(Base):
     __tablename__ = "user_activities"
+    __table_args__ = {
+        'postgresql_partition_by': 'RANGE (timestamp)'
+    }
 
+    # In partitioned tables, the partition key must be part of the primary key
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
     user_id = Column(UUID(as_uuid=False), ForeignKey("users.id", ondelete="CASCADE"))
     activity_type = Column(String(50), nullable=False) # view_product, visit_store, try_on, search
     product_id = Column(UUID(as_uuid=False), ForeignKey("products.id", ondelete="SET NULL"), nullable=True)
     store_id = Column(UUID(as_uuid=False), ForeignKey("stores.id", ondelete="SET NULL"), nullable=True)
     metadata_json = Column(JSON, default={})
-    timestamp = Column(DateTime(timezone=True), server_default=func.now())
+    timestamp = Column(DateTime(timezone=True), primary_key=True, server_default=func.now())
 
 class UserLoyalty(Base):
     __tablename__ = "user_loyalty"

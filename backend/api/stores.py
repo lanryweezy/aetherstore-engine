@@ -76,7 +76,7 @@ async def create_new_store(store: StoreCreate, current_user = Depends(get_curren
 
 @router.get("/", response_model=List[StoreResponse])
 async def list_stores(brand_id: Optional[str] = None, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):
-    query = db.query(Store)
+    query = db.query(Store).filter(Store.deleted_at == None)
     if brand_id:
         query = query.filter(Store.brand_id == brand_id)
     return query.all()
