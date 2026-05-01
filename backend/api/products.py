@@ -1,8 +1,8 @@
 # api/products.py
 # Product management API endpoints for Aetherstore Engine
 
-from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File
-from pydantic import BaseModel
+from fastapi import APIRouter, Depends, HTTPException, status, UploadFile, File, BackgroundTasks
+from pydantic import BaseModel, ConfigDict
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 import uuid
@@ -76,8 +76,7 @@ class ProductResponse(BaseModel):
     updated_at: Optional[datetime] = None
     is_active: bool
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 class ProductImageCreate(BaseModel):
     product_id: str
@@ -93,8 +92,7 @@ class ProductImageResponse(BaseModel):
     is_primary: bool
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 # Product endpoints
 @router.post("/", response_model=ProductResponse, status_code=status.HTTP_201_CREATED)
@@ -137,14 +135,29 @@ async def list_products(brand_id: Optional[str] = None, store_id: Optional[str] 
         query = query.filter(Product.store_id == store_id)
     if category:
         query = query.filter(Product.category == category)
-    return query.offset(skip).limit(limit).all()
+
+    results = query.offset(skip).limit(limit).all()
+
+    # Sign URLs for list results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
+
+from storage_service import storage_service
 
 @router.get("/{product_id}", response_model=ProductResponse)
 async def read_product(product_id: str, db: Session = Depends(get_db)):
-    """Get product by ID"""
+    """Get product by ID and securely sign the 3D model URL"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
+
+    # Generate pre-signed secure CDN URL for the heavy 3D asset
+    if db_product.model_3d_url:
+        db_product.model_3d_url = storage_service.get_presigned_url(db_product.model_3d_url)
+
     return db_product
 
 @router.put("/{product_id}", response_model=ProductResponse)
@@ -197,11 +210,22 @@ async def upload_product_image(image_data: ProductImageCreate, current_user = De
     db.refresh(db_image)
     return db_image
 
+
+from fastapi import Form
+import json
+import base64
+from PIL import Image
+import io
+from pathlib import Path
+
 @router.post("/upload-3d-model/{product_id}")
-async def upload_3d_model(product_id: str, file: UploadFile = File(...), 
+async def upload_3d_model(product_id: str,
+                          background_tasks: BackgroundTasks,
+                          file: UploadFile = File(...),
+                          thumbnails: Optional[str] = Form(None),
                           current_user = Depends(get_current_active_user),
                           db: Session = Depends(get_db)):
-    """Upload and automatically optimize a 3D model for the web"""
+    """Upload and schedule automatic optimization of a 3D model for the web"""
     db_product = get_product(db, product_id)
     if not db_product:
         raise HTTPException(status_code=404, detail="Product not found")
@@ -219,27 +243,223 @@ async def upload_3d_model(product_id: str, file: UploadFile = File(...),
     with open(raw_path, "wb+") as file_object:
         file_object.write(await file.read())
 
-    # TRIGGER AUTO-OPTIMIZATION
-    from asset_processor_3d import optimize_3d_model, OptimizationLevel
-    try:
-        # Decimate mesh and compress textures automatically
-        result = optimize_3d_model(raw_path, optimized_path, OptimizationLevel.MEDIUM)
-        if result.success:
-            final_path = optimized_path
-            os.remove(raw_path) # Clean up raw file
-        else:
-            final_path = raw_path # Fallback to raw if optimization fails
-            logger.warning(f"3D Optimization failed for {product_id}: {result.error_message}")
-    except Exception as e:
-        final_path = raw_path
-        logger.error(f"Error in 3D pipeline for {product_id}: {e}")
+    # Handle client-generated thumbnails if provided
+    if thumbnails:
+        try:
+            thumbs_data = json.loads(thumbnails)
+            thumb_dir = Path(raw_path).parent / "thumbnails"
+            thumb_dir.mkdir(exist_ok=True)
 
-    update_product(db, product_id, {"model_3d_url": final_path})
+            valid_views = ["front", "side", "top", "iso"]
+
+            for view_name, base64_data in thumbs_data.items():
+                if view_name not in valid_views:
+                    continue
+
+                if base64_data and base64_data.startswith("data:image"):
+                    # Extract the base64 string
+                    header, encoded = base64_data.split(",", 1)
+                    image_data = base64.b64decode(encoded)
+                    image = Image.open(io.BytesIO(image_data))
+
+                    thumb_path = thumb_dir / f"{Path(raw_path).stem}_{view_name}.png"
+                    image.save(thumb_path, "PNG")
+                    logger.info(f"Saved client-generated thumbnail to {thumb_path}")
+        except Exception as e:
+            logger.error(f"Failed to process client-generated thumbnails: {e}")
+
+    # Update product immediately to show the raw file while processing
+    update_product(db, product_id, {"model_3d_url": raw_path})
+
+    # TRIGGER AUTO-OPTIMIZATION IN CELERY BACKGROUND WORKER
+    from tasks import process_3d_model_task
+
+    # We delay the task, putting it into the Redis queue for the Celery worker to pick up
+    task = process_3d_model_task.delay(product_id, raw_path, optimized_path)
+
     return {
-        "location": final_path,
-        "optimized": final_path == optimized_path,
-        "metadata": result.metadata if result.success else None
+        "location": raw_path,
+        "status": "processing",
+        "task_id": task.id,
+        "message": "3D model uploaded and is queued for optimization in the background."
     }
+
+
+@router.post("/upload-image/{product_id}")
+async def upload_product_image_file(
+    product_id: str,
+    file: UploadFile = File(...),
+    remove_background: bool = Form(True),
+    is_primary: bool = Form(False),
+    alt_text: str = Form(None),
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a product image, optionally remove its background using SAM 2 / rembg"""
+    db_product = get_product(db, product_id)
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Authorize
+    db_brand = get_brand(db, db_product.brand_id)
+    if db_brand.owner_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    upload_dir = "uploads/product_images"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_ext = os.path.splitext(file.filename)[1] if file.filename else ".png"
+    file_id = str(uuid.uuid4())
+    raw_path = os.path.join(upload_dir, f"raw_{product_id}_{file_id}{file_ext}")
+    final_path = raw_path
+
+    # Save original file
+    with open(raw_path, "wb+") as file_object:
+        file_object.write(await file.read())
+
+    # Background Removal
+    if remove_background:
+        try:
+            import io
+            import torch
+            from PIL import Image
+            from ultralytics import SAM
+
+            # Use SAM 2
+            model = SAM("sam2_s.pt") # Small version for reasonable inference speed without gpu
+
+            processed_path = os.path.join(upload_dir, f"nobg_{product_id}_{file_id}.png")
+
+            with open(raw_path, "rb") as input_file:
+                input_image = Image.open(input_file).convert("RGB")
+
+            # Run inference
+            results = model(input_image, device="cpu" if not torch.cuda.is_available() else "cuda")
+
+            # Convert segmentation mask back to an image with a transparent background
+            result = results[0]
+            if result.masks is not None:
+                mask = result.masks.data[0].cpu().numpy()
+                input_image_rgba = input_image.convert("RGBA")
+                import numpy as np
+                img_array = np.array(input_image_rgba)
+
+                # Apply mask to alpha channel (resize mask if necessary)
+                import cv2
+                mask_resized = cv2.resize(mask, (img_array.shape[1], img_array.shape[0]))
+                img_array[:, :, 3] = (mask_resized * 255).astype(np.uint8)
+
+                output_image = Image.fromarray(img_array)
+                output_image.save(processed_path, format="PNG")
+
+                final_path = processed_path
+
+                # Optionally remove the raw file
+                try:
+                    os.remove(raw_path)
+                except:
+                    pass
+            else:
+                raise Exception("No mask generated by SAM 2")
+
+        except Exception as e:
+            # Fallback to raw image if background removal fails
+            final_path = raw_path
+            print(f"SAM 2 background removal failed: {e}")
+
+    db_image = ProductImage(
+        id=str(uuid.uuid4()),
+        product_id=product_id,
+        image_url=final_path,
+        alt_text=alt_text,
+        is_primary=is_primary,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_image)
+    db.commit()
+    db.refresh(db_image)
+
+    return db_image
+
+
+
+@router.post("/upload-image-rmbg/{product_id}")
+async def upload_product_image_rmbg(
+    product_id: str,
+    file: UploadFile = File(...),
+    is_primary: bool = Form(False),
+    alt_text: str = Form(None),
+    current_user = Depends(get_current_active_user),
+    db: Session = Depends(get_db)
+):
+    """Upload a product image and automatically remove its background using SAM 2"""
+    db_product = get_product(db, product_id)
+    if not db_product:
+        raise HTTPException(status_code=404, detail="Product not found")
+
+    # Authorize
+    db_brand = get_brand(db, db_product.brand_id)
+    if db_brand.owner_user_id != current_user.id:
+        raise HTTPException(status_code=403, detail="Not authorized")
+
+    allowed_types = ['image/jpeg', 'image/png', 'image/webp']
+    if file.content_type not in allowed_types:
+        raise HTTPException(status_code=400, detail="Invalid file type")
+
+    upload_dir = "uploads/product_images"
+    os.makedirs(upload_dir, exist_ok=True)
+
+    file_ext = os.path.splitext(file.filename)[1] if file.filename else ".png"
+    file_id = str(uuid.uuid4())
+    raw_path = os.path.join(upload_dir, f"raw_{product_id}_{file_id}{file_ext}")
+    final_path = raw_path
+
+    # Save original file
+    with open(raw_path, "wb+") as file_object:
+        file_object.write(await file.read())
+
+    # Background Removal with SAM 2 via ai_processing logic
+    from ai_processing import AIProcessor
+    processor = AIProcessor()
+
+    if hasattr(processor, 'sam_3d_objects') and hasattr(processor.sam_3d_objects, 'remove_background'):
+        processed_path = os.path.join(upload_dir, f"nobg_{product_id}_{file_id}.png")
+
+        # We need to copy raw to processed so SAM can operate on it and save it
+        import shutil
+        shutil.copyfile(raw_path, processed_path)
+
+        success = processor.sam_3d_objects.remove_background(processed_path)
+        if success:
+            final_path = processed_path
+            try:
+                os.remove(raw_path)
+            except:
+                pass
+        else:
+            try:
+                os.remove(processed_path)
+            except:
+                pass
+
+    db_image = ProductImage(
+        id=str(uuid.uuid4()),
+        product_id=product_id,
+        image_url=final_path,
+        alt_text=alt_text,
+        is_primary=is_primary,
+        created_at=datetime.utcnow()
+    )
+    db.add(db_image)
+    db.commit()
+    db.refresh(db_image)
+
+    return db_image
+
 
 @router.get("/{product_id}/images/", response_model=List[ProductImageResponse])
 async def get_product_images(product_id: str, db: Session = Depends(get_db)):
@@ -317,7 +537,14 @@ async def search_products_advanced(
     if color:
         query = query.filter(Product.colors.cast(String).ilike(f"%{color}%"))
 
-    return query.all()
+    results = query.all()
+
+    # Sign URLs for search results
+    for product in results:
+        if product.model_3d_url:
+            product.model_3d_url = storage_service.get_presigned_url(product.model_3d_url)
+
+    return results
 
 # Social Proof & Reviews System
 from models import ProductReview
@@ -336,8 +563,7 @@ class ReviewResponse(BaseModel):
     helpful_count: int
     created_at: datetime
 
-    class Config:
-        from_attributes = True
+    model_config = ConfigDict(from_attributes=True)
 
 @router.post("/{product_id}/reviews", response_model=ReviewResponse)
 async def create_review(product_id: str, review_in: ReviewCreate, current_user = Depends(get_current_active_user), db: Session = Depends(get_db)):

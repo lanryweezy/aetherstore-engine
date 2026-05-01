@@ -12,6 +12,8 @@ import logging
 from pathlib import Path
 import trimesh
 import PIL.Image as Image
+from blender_processor import blender_processor
+from gltf_processor import gltf_processor
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -200,38 +202,68 @@ class ModelProcessor:
                 )
             
             completed_steps = [ProcessingStep.VALIDATION]
-            
-            # Load the model
-            mesh = trimesh.load(input_file, force='mesh')
-            completed_steps.append(ProcessingStep.DECOMPRESSION)
-            
-            # Extract optimization parameters
             params = self.optimization_levels[optimization_level]
             
-            # Clean the mesh
-            mesh = self._clean_mesh(mesh)
-            completed_steps.append(ProcessingStep.CLEANING)
-            
-            # Optimize the mesh
-            mesh = self._optimize_mesh(mesh, params["decimation_ratio"])
-            completed_steps.append(ProcessingStep.OPTIMIZATION)
-            
-            # Process textures
-            # This would involve texture compression and optimization
-            completed_steps.append(ProcessingStep.TEXTURE_PROCESSING)
-            
-            # Save optimized model
-            mesh.export(output_file)
-            completed_steps.append(ProcessingStep.COMPRESSION)
+            use_fallback = True
+            if gltf_processor.is_available():
+                logger.info("Using gltf-transform for optimization")
+                # This is extremely fast and handles PBR materials seamlessly
+                success = gltf_processor.optimize_model(input_file, output_file)
+                if success:
+                    completed_steps.extend([
+                        ProcessingStep.DECOMPRESSION,
+                        ProcessingStep.CLEANING,
+                        ProcessingStep.OPTIMIZATION,
+                        ProcessingStep.COMPRESSION
+                    ])
+                    use_fallback = False
+                else:
+                    logger.warning("gltf-transform optimization failed. Falling back.")
+
+            if use_fallback and blender_processor.is_blender_available():
+                logger.info("Using Blender for optimization")
+                # Optimize using Blender
+                success = blender_processor.optimize_model(input_file, output_file, params["decimation_ratio"])
+                if success:
+                    completed_steps.extend([
+                        ProcessingStep.DECOMPRESSION,
+                        ProcessingStep.CLEANING,
+                        ProcessingStep.OPTIMIZATION,
+                        ProcessingStep.COMPRESSION
+                    ])
+                    use_fallback = False
+                else:
+                    logger.warning("Blender optimization failed. Falling back to Trimesh.")
+
+            if use_fallback:
+                logger.info("Using Trimesh for optimization")
+                # Load the model
+                mesh = trimesh.load(input_file, force='mesh')
+                completed_steps.append(ProcessingStep.DECOMPRESSION)
+
+                # Clean the mesh
+                mesh = self._clean_mesh(mesh)
+                completed_steps.append(ProcessingStep.CLEANING)
+
+                # Optimize the mesh
+                mesh = self._optimize_mesh(mesh, params["decimation_ratio"])
+                completed_steps.append(ProcessingStep.OPTIMIZATION)
+
+                # Process textures
+                # This would involve texture compression and optimization
+                completed_steps.append(ProcessingStep.TEXTURE_PROCESSING)
+
+                # Save optimized model
+                mesh.export(output_file)
+                completed_steps.append(ProcessingStep.COMPRESSION)
             
             # Extract metadata
             metadata = self.extract_metadata(output_file)
             metadata.processing_time = time.time() - start_time
             completed_steps.append(ProcessingStep.METADATA_EXTRACTION)
             
-            # Generate thumbnails
-            self._generate_thumbnails(output_file)
-            completed_steps.append(ProcessingStep.THUMBNAIL_GENERATION)
+            # Skip Backend Thumbnail generation as it will be handled by the frontend
+            logger.info(f"Skipping backend thumbnail generation for {input_file} - now handled by frontend")
             
             result = ProcessingResult(
                 success=True,
@@ -322,26 +354,43 @@ class ModelProcessor:
     
     def _generate_thumbnails(self, model_file: str) -> List[str]:
         """
-        Generate wireframe schematic thumbnails for a 3D model.
-        This provides a realistic 'CAD' feel for fashion brands.
+        Generate thumbnails for a 3D model.
+        Uses Blender if available, otherwise falls back to trimesh wireframes.
         """
         try:
-            from PIL import ImageDraw
-            mesh = trimesh.load(model_file, force='mesh')
-            thumbnails = []
             base_name = Path(model_file).stem
             thumb_dir = Path(model_file).parent / "thumbnails"
             thumb_dir.mkdir(exist_ok=True)
+            thumbnails = []
+
+            views = ["front", "side", "top", "iso"]
+
+            if blender_processor.is_blender_available():
+                logger.info(f"Using Blender to render thumbnails for {model_file}")
+                success = blender_processor.render_thumbnails(model_file, str(thumb_dir))
+                if success:
+                    for view_name in views:
+                        thumb_path = thumb_dir / f"{base_name}_{view_name}.png"
+                        if thumb_path.exists():
+                            thumbnails.append(str(thumb_path))
+                    logger.info(f"Generated {len(thumbnails)} rendered thumbnails for {model_file}")
+                    return thumbnails
+                else:
+                    logger.warning("Blender thumbnail rendering failed. Falling back to wireframes.")
+
+            logger.info(f"Using Trimesh to generate wireframe thumbnails for {model_file}")
+            from PIL import ImageDraw
+            mesh = trimesh.load(model_file, force='mesh')
 
             # Rotation angles for different views
-            views = {
+            views_rotations = {
                 "front": [0, 0, 0],
                 "side": [0, np.pi/2, 0],
                 "top": [np.pi/2, 0, 0],
                 "iso": [np.pi/4, np.pi/4, 0]
             }
 
-            for view_name, rotation in views.items():
+            for view_name, rotation in views_rotations.items():
                 thumb_path = thumb_dir / f"{base_name}_{view_name}.png"
 
                 # Create canvas
@@ -378,7 +427,7 @@ class ModelProcessor:
             return thumbnails
             
         except Exception as e:
-            logger.warning(f"Wireframe generation failed: {str(e)}. Falling back to basic placeholder.")
+            logger.warning(f"Thumbnail generation failed: {str(e)}. Falling back to basic placeholder.")
             return self._generate_basic_placeholders(model_file)
 
     def _generate_basic_placeholders(self, model_file: str) -> List[str]:
