@@ -3,18 +3,30 @@
 
 from fastapi import Request, HTTPException, status
 from fastapi.responses import JSONResponse
-from slowapi import Limiter, _rate_limit_exceeded_handler
-from slowapi.util import get_remote_address
-from slowapi.errors import RateLimitExceeded
-from typing import Callable
+from typing import Callable, Optional, Any
 import logging
 import re
 from config import settings
 
 logger = logging.getLogger(__name__)
 
+# Optional slowapi dependency
+try:
+    from slowapi import Limiter, _rate_limit_exceeded_handler
+    from slowapi.util import get_remote_address
+    from slowapi.errors import RateLimitExceeded
+    SLOWAPI_AVAILABLE = True
+except ImportError:
+    SLOWAPI_AVAILABLE = False
+
 # Initialize rate limiter
-limiter = Limiter(key_func=get_remote_address)
+if SLOWAPI_AVAILABLE:
+    limiter = Limiter(key_func=get_remote_address)
+else:
+    class MockLimiter:
+        def limit(self, *args, **kwargs):
+            return lambda func: func
+    limiter = MockLimiter()
 
 # Security headers
 SECURITY_HEADERS = {
@@ -42,7 +54,6 @@ class SecurityMiddleware:
     
     async def __call__(self, scope, receive, send):
         if scope["type"] == "http":
-            # Add security headers
             async def send_wrapper(message):
                 if message["type"] == "http.response.start":
                     headers = dict(message.get("headers", []))
@@ -59,11 +70,9 @@ def validate_input(input_str: str, max_length: int = 1000) -> bool:
     """Validate input string for common injection patterns"""
     if not isinstance(input_str, str):
         return False
-    
     if len(input_str) > max_length:
         return False
     
-    # Check for SQL injection patterns
     sql_patterns = [
         r"(\b(SELECT|INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|EXEC|EXECUTE)\b)",
         r"(--|;|/\*|\*/|xp_|sp_)",
@@ -75,7 +84,6 @@ def validate_input(input_str: str, max_length: int = 1000) -> bool:
             logger.warning(f"Potential SQL injection detected: {input_str[:50]}")
             return False
     
-    # Check for XSS patterns
     xss_patterns = [
         r"<script[^>]*>",
         r"javascript:",
@@ -94,20 +102,14 @@ def sanitize_string(input_str: str) -> str:
     """Sanitize input string"""
     if not isinstance(input_str, str):
         return ""
-    
-    # Remove null bytes
     input_str = input_str.replace("\x00", "")
-    
-    # Remove control characters except newlines and tabs
     input_str = "".join(char for char in input_str if ord(char) >= 32 or char in "\n\t")
-    
     return input_str.strip()
 
 def validate_email(email: str) -> bool:
     """Validate email format"""
     if not email:
         return False
-    
     email_pattern = r"^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$"
     return bool(re.match(email_pattern, email))
 
@@ -115,24 +117,21 @@ def validate_uuid(uuid_str: str) -> bool:
     """Validate UUID format"""
     if not uuid_str:
         return False
-    
     uuid_pattern = r"^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
     return bool(re.match(uuid_pattern, uuid_str, re.IGNORECASE))
 
-async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+async def rate_limit_handler(request: Request, exc: Any):
     """Handle rate limit exceeded"""
     return JSONResponse(
         status_code=status.HTTP_429_TOO_MANY_REQUESTS,
         content={
             "error": "Rate limit exceeded",
-            "message": f"Too many requests. Limit: {exc.detail}",
+            "message": "Too many requests. Please try again later.",
             "retry_after": 60
         },
         headers={"Retry-After": "60"}
     )
 
-# Rate limit decorator
 def rate_limit(requests_per_minute: int = 60):
     """Rate limit decorator"""
     return limiter.limit(f"{requests_per_minute}/minute")
-

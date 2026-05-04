@@ -2,7 +2,7 @@
 # API routers for Aetherstore Engine
 
 from fastapi import APIRouter
-from . import users, stores, products, avatars, tryon, payments, orders, subscriptions, loyalty, analytics
+from . import users, stores, products, avatars, tryon, payments, orders, subscriptions, loyalty, analytics, ai_pinnacle, commerce_pinnacle, intelligence_pinnacle
 
 # Create main API router
 api_router = APIRouter(prefix="/api")
@@ -18,6 +18,9 @@ api_router.include_router(orders.router, tags=["orders"])
 api_router.include_router(subscriptions.router, tags=["subscriptions"])
 api_router.include_router(loyalty.router, prefix="/loyalty", tags=["loyalty"])
 api_router.include_router(analytics.router, prefix="/analytics", tags=["analytics"])
+api_router.include_router(ai_pinnacle.router, tags=["Super-Intelligence"])
+api_router.include_router(commerce_pinnacle.router, tags=["Commerce-V2"])
+api_router.include_router(intelligence_pinnacle.router, tags=["Intelligence"])
 
 # AI Consultant Extended Endpoints
 from ai_consultant import equip_item_endpoint, get_equipped_endpoint, create_board_endpoint, list_boards_endpoint, consultant_chat_endpoint
@@ -34,5 +37,5 @@ async def health_check():
     return {"status": "healthy", "timestamp": "now"}
 
 # Version info
-__version__ = "1.0.0"
+__version__ = "2.0.0"
 __author__ = "Aetherstore Engine Team"

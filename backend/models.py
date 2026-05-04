@@ -67,19 +67,21 @@ class Brand(Base, SoftDeleteMixin):
 
 class Store(Base, SoftDeleteMixin):
     __tablename__ = "stores"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
     brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"))
     name = Column(String(255), nullable=False)
     template = Column(String(100), default="modern-gallery")
-    lighting_preset = Column(String(100), default="studio") # studio, cinematic, sunlight, neon, warm, minimalist
+    lighting_preset = Column(String(100), default="studio") 
     description = Column(Text)
     settings = Column(JSON, default={})
-    scene_state = Column(JSON, default={}) # 3D Layout: coords and rotations for props
+    scene_state = Column(JSON, default={})
     is_published = Column(Boolean, default=False)
+    is_active = Column(Boolean, default=True)
+    products_list = Column(JSON, default=[]) # Added for StoreDB compatibility
     created_at = Column(DateTime(timezone=True), server_default=func.now())
     updated_at = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
-    is_active = Column(Boolean, default=True)
     
     # Relationships
     brand = relationship("Brand", back_populates="stores")
@@ -87,8 +89,11 @@ class Store(Base, SoftDeleteMixin):
     tryon_sessions = relationship("TryOnSession", back_populates="store")
     analytics = relationship("StoreAnalytics", back_populates="store")
 
+StoreDB = Store
+
 class Product(Base, SoftDeleteMixin):
     __tablename__ = "products"
+    __table_args__ = {'extend_existing': True}
     
     id = Column(UUID(as_uuid=False), primary_key=True, default=generate_uuid)
     brand_id = Column(UUID(as_uuid=False), ForeignKey("brands.id", ondelete="CASCADE"))
@@ -101,7 +106,9 @@ class Product(Base, SoftDeleteMixin):
     size_chart = Column(JSON)
     colors = Column(JSON)
     materials = Column(JSON)
+    material = Column(String(255)) # Added for ProductDB compatibility
     dimensions = Column(JSON)
+    asset_urls = Column(JSON) # Added for ProductDB compatibility
     care_instructions = Column(Text)
     model_3d_url = Column(String(500))
     textures_urls = Column(JSON)
@@ -119,6 +126,8 @@ class Product(Base, SoftDeleteMixin):
     cart_items = relationship("CartItem", back_populates="product")
     order_items = relationship("OrderItem", back_populates="product")
     analytics = relationship("ProductAnalytics", back_populates="product")
+
+ProductDB = Product
 
 class ProductImage(Base):
     __tablename__ = "product_images"

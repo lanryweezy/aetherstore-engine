@@ -19,7 +19,7 @@ os.environ["PAYSTACK_SECRET_KEY"] = "sk_test_fake"
 @pytest.fixture(scope="session")
 def test_app():
     """Create test application"""
-    from main_app import app
+    from main import app
     return app
 
 @pytest.fixture

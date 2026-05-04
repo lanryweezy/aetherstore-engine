@@ -1,0 +1,202 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AetherStore AI Intelligence Demo</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        .glass {
+            background: rgba(255, 255, 255, 0.1);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+        }
+        body {
+            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            color: white;
+        }
+    </style>
+</head>
+<body class="min-h-screen p-8">
+    <div class="max-w-6xl mx-auto">
+        <header class="mb-12 text-center">
+            <h1 class="text-5xl font-extrabold mb-4 bg-clip-text text-transparent bg-gradient-to-r from-cyan-400 to-purple-500">
+                AI Fashion Intelligence
+            </h1>
+            <p class="text-xl text-slate-400">Powered by OpenFashionCLIP & SHIFT15M</p>
+        </header>
+
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <!-- Trend Momentum Section -->
+            <section class="glass p-6 rounded-2xl shadow-2xl">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <span class="mr-2">📈</span> Trend Momentum
+                </h2>
+                <div id="trend-list" class="space-y-4">
+                    <p class="text-slate-400 animate-pulse">Loading trend analysis...</p>
+                </div>
+                <div class="mt-8 p-4 bg-slate-800/50 rounded-xl">
+                    <p class="text-sm text-slate-400">Market Shift Ratio</p>
+                    <div id="shift-ratio" class="text-3xl font-mono text-cyan-400">1.00</div>
+                </div>
+            </section>
+
+            <!-- Popularity Predictor Section -->
+            <section class="glass p-6 rounded-2xl shadow-2xl">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <span class="mr-2">🔮</span> Popularity Predictor
+                </h2>
+                <div class="space-y-4">
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Category</label>
+                        <select id="prod-cat" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white">
+                            <option value="tops">Tops</option>
+                            <option value="dresses">Dresses</option>
+                            <option value="outerwear">Outerwear</option>
+                            <option value="bottoms">Bottoms</option>
+                            <option value="accessories">Accessories</option>
+                        </select>
+                    </div>
+                    <div>
+                        <label class="block text-sm text-slate-400 mb-2">Product ID (Simulation)</label>
+                        <input type="text" id="prod-id" value="prod_new_001" class="w-full bg-slate-800 border border-slate-700 rounded-lg p-3 text-white">
+                    </div>
+                    <button onclick="predictPopularity()" class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 hover:from-cyan-400 hover:to-blue-500 text-white font-bold py-3 rounded-lg transition-all transform hover:scale-[1.02]">
+                        Analyze Future Performance
+                    </button>
+                </div>
+                <div id="popularity-result" class="mt-8 hidden">
+                    <div class="p-6 bg-slate-800/80 border border-cyan-500/30 rounded-2xl text-center">
+                        <p class="text-slate-400 mb-1">Predicted Likes</p>
+                        <div id="predicted-likes" class="text-5xl font-black text-white mb-2">0</div>
+                        <div id="momentum-badge" class="inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider">
+                            Trending
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Outfit Matching Section -->
+            <section class="glass p-6 rounded-2xl shadow-2xl md:col-span-2">
+                <h2 class="text-2xl font-bold mb-6 flex items-center">
+                    <span class="mr-2">👗</span> Set-to-Set Outfit Matching
+                </h2>
+                <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+                    <div class="space-y-4">
+                        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest">Top Items</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="p-4 bg-slate-800 border border-slate-700 rounded-xl text-center cursor-pointer hover:border-cyan-500 transition-colors">Shirt A</div>
+                            <div class="p-4 bg-slate-800 border border-slate-700 rounded-xl text-center cursor-pointer hover:border-cyan-500 transition-colors">Blouse B</div>
+                        </div>
+                        <h3 class="text-sm font-semibold text-slate-400 uppercase tracking-widest mt-6">Bottom Items</h3>
+                        <div class="grid grid-cols-2 gap-2">
+                            <div class="p-4 bg-slate-800 border border-slate-700 rounded-xl text-center cursor-pointer hover:border-cyan-500 transition-colors">Skirt C</div>
+                            <div class="p-4 bg-slate-800 border border-slate-700 rounded-xl text-center cursor-pointer hover:border-cyan-500 transition-colors">Jeans D</div>
+                        </div>
+                    </div>
+                    <div class="flex flex-col justify-center items-center p-8 bg-slate-900/50 rounded-2xl border border-white/5">
+                        <div class="relative w-48 h-48 mb-6">
+                            <svg class="w-full h-full transform -rotate-90">
+                                <circle cx="96" cy="96" r="88" stroke="currentColor" stroke-width="12" fill="transparent" class="text-slate-800" />
+                                <circle id="compat-circle" cx="96" cy="96" r="88" stroke="currentColor" stroke-width="12" fill="transparent" stroke-dasharray="553" stroke-dashoffset="553" class="text-cyan-500 transition-all duration-1000 ease-out" />
+                            </svg>
+                            <div class="absolute inset-0 flex flex-col items-center justify-center">
+                                <span id="compat-score" class="text-4xl font-black">0%</span>
+                                <span class="text-[10px] text-slate-500 uppercase">Match</span>
+                            </div>
+                        </div>
+                        <button onclick="matchOutfit()" class="bg-white text-slate-900 font-bold px-8 py-3 rounded-full hover:bg-cyan-100 transition-colors">
+                            Check Compatibility
+                        </button>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:8000/api';
+
+        async function loadTrends() {
+            try {
+                const response = await fetch(`${API_BASE}/intelligence/trend-momentum`);
+                const data = await response.json();
+                
+                const list = document.getElementById('trend-list');
+                list.innerHTML = '';
+                
+                data.trending.forEach(([cat, momentum]) => {
+                    const el = document.createElement('div');
+                    el.className = 'flex items-center justify-between p-3 bg-white/5 rounded-lg';
+                    const percentage = (momentum * 100).toFixed(1);
+                    el.innerHTML = `
+                        <span class="font-medium text-slate-200 capitalize">${cat}</span>
+                        <div class="flex items-center text-emerald-400 font-bold">
+                            <span class="mr-1">↑</span> ${percentage}%
+                        </div>
+                    `;
+                    list.appendChild(el);
+                });
+
+                document.getElementById('shift-ratio').innerText = data.target_shift_ratio.toFixed(2);
+            } catch (e) {
+                console.error("Failed to load trends", e);
+            }
+        }
+
+        async function predictPopularity() {
+            const cat = document.getElementById('prod-cat').value;
+            const id = document.getElementById('prod-id').value;
+            
+            try {
+                const response = await fetch(`${API_BASE}/intelligence/predict-popularity`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: cat, id: id })
+                });
+                const data = await response.json();
+                
+                document.getElementById('popularity-result').classList.remove('hidden');
+                document.getElementById('predicted-likes').innerText = data.predicted_likes;
+                
+                const badge = document.getElementById('momentum-badge');
+                if (data.momentum_factor > 0) {
+                    badge.innerText = 'Trending Hot';
+                    badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400';
+                } else {
+                    badge.innerText = 'Stable';
+                    badge.className = 'inline-block px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider bg-slate-500/20 text-slate-400';
+                }
+            } catch (e) {
+                console.error("Prediction failed", e);
+            }
+        }
+
+        async function matchOutfit() {
+            try {
+                const response = await fetch(`${API_BASE}/intelligence/match-outfit`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ top_ids: ['top1'], bottom_ids: ['bottom1'] })
+                });
+                const data = await response.json();
+                
+                const percentage = (data.compatibility_score * 100).toFixed(0);
+                document.getElementById('compat-score').innerText = `${percentage}%`;
+                
+                const circle = document.getElementById('compat-circle');
+                const circumference = 553;
+                const offset = circumference - (data.compatibility_score * circumference);
+                circle.style.strokeDashoffset = offset;
+            } catch (e) {
+                console.error("Match failed", e);
+            }
+        }
+
+        // Initial load
+        loadTrends();
+        // Periodically refresh trends
+        setInterval(loadTrends, 5000);
+    </script>
+</body>
+</html>

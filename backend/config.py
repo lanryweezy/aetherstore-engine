@@ -1,117 +1,73 @@
-# config.py
-# Configuration settings for Aetherstore Engine backend
-
-import os
-from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
+from typing import Optional, List
+import os
 
 class Settings(BaseSettings):
-    # Application settings
-    APP_NAME: str = "Aetherstore Engine"
-    APP_VERSION: str = "1.0.0"
-    DEBUG: bool = False
+    # App Settings
+    APP_NAME: str = "AetherStore Engine"
+    APP_VERSION: str = "2.0.0"
+    DEBUG: bool = True
     ENVIRONMENT: str = "development"
-    SENTRY_DSN: Optional[str] = None
+    LOG_LEVEL: str = "INFO"
     
-    # Database settings
-    DATABASE_URL: str = "postgresql://localhost/aetherstore_dev"
-    DATABASE_POOL_SIZE: int = 20
-    DATABASE_MAX_OVERFLOW: int = 30
+    # Infrastructure
+    DATABASE_URL: str = "sqlite:///./aetherstore.db"
+    REDIS_URL: str = "redis://localhost:6379/0"
     
-    # Security settings
-    SECRET_KEY: str = "your-secret-key-change-in-production"
+    # Security
+    SECRET_KEY: str = "dev-secret-key-change-in-production-32-chars-at-least"
     ALGORITHM: str = "HS256"
-    ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
-    
-    # CORS settings
+    ACCESS_TOKEN_EXPIRE_MINUTES: int = 60
     CORS_ORIGINS: str = "*"
     CORS_CREDENTIALS: bool = True
     CORS_METHODS: str = "*"
     CORS_HEADERS: str = "*"
     
-    # File storage settings
-    UPLOAD_DIR: str = "uploads"
-    TEMP_DIR: str = "temp"
-    MAX_FILE_SIZE_MB: int = 50
-    
-    # AI service settings
-    AI_SERVICE_URL: str = "http://localhost:8001"
-    AI_MODEL_TIMEOUT_SECONDS: int = 300
-    
-    # 3D processing settings
-    MAX_POLYGON_COUNT: int = 100000
-    TEXTURE_RESOLUTION: str = "4k"
-    
-    # WebSocket settings for real-time features
-    WEBSOCKET_HOST: str = "0.0.0.0"
-    WEBSOCKET_PORT: int = 8002
-    
-    # Redis settings for caching and sessions
-    REDIS_URL: str = "redis://localhost:6379"
-    REDIS_CACHE_TTL_SECONDS: int = 3600
-    
-    # Email settings
-    EMAIL_PROVIDER: str = "sendgrid"  # "sendgrid", "mailgun", or "smtp"
-    EMAIL_SENDGRID_API_KEY: str = ""
-    EMAIL_MAILGUN_API_KEY: str = ""
-    EMAIL_MAILGUN_DOMAIN: str = ""
-    SMTP_SERVER: str = "smtp.gmail.com"
-    SMTP_PORT: int = 587
-    EMAIL_USERNAME: str = ""
-    EMAIL_PASSWORD: str = ""
-    FROM_EMAIL: str = "noreply@aetherstore.engine"
-    FROM_NAME: str = "Aetherstore Engine"
-    
-    # Payment settings
+    # Payments
     STRIPE_SECRET_KEY: str = ""
     STRIPE_PUBLIC_KEY: str = ""
     PAYSTACK_SECRET_KEY: str = ""
     PAYSTACK_PUBLIC_KEY: str = ""
-    STRIPE_WEBHOOK_SECRET: str = ""
-    PAYPAL_CLIENT_ID: str = ""
-    PAYPAL_SECRET: str = ""
     
-    # CDN settings
-    CDN_BASE_URL: str = ""
+    # Email
+    SMTP_SERVER: str = "smtp.gmail.com"
+    SMTP_PORT: int = 587
+    EMAIL_USERNAME: str = ""
+    EMAIL_PASSWORD: str = ""
+    EMAIL_FROM: str = "noreply@aetherstore.com"
     
-    # Analytics settings
-    ANALYTICS_BATCH_SIZE: int = 50
-    ANALYTICS_FLUSH_INTERVAL_SECONDS: int = 30
+    # AI Model Paths - 27 Pillars
+    MODEL_PATH_CLIP: str = "backend/ai_models/openfashionclip.pt"
+    MODEL_PATH_SHAPER: str = "backend/ai_models/shaper_weights.pt"
+    MODEL_PATH_BOXER: str = "backend/ai_models/boxer_net.pt"
+    MODEL_PATH_MOMENTUM: str = "backend/ai_models/momentum_solver.pt"
+    MODEL_PATH_SAPIENS: str = "backend/ai_models/sapiens_1b.pt"
+    MODEL_PATH_TRIBE: str = "backend/ai_models/tribev2_weights.pt"
+    MODEL_PATH_MUSICGEN: str = "facebook/musicgen-small"
+    MODEL_PATH_FLOWDEC: str = "backend/ai_models/flowdec_weights.pt"
+    MODEL_PATH_MOVIEGEN: str = "facebook/movie-gen-video"
+    MODEL_PATH_VJEPA: str = "facebook/vjepa-large"
+    MODEL_PATH_LLAMA: str = "meta-llama/Llama-3-8B-Instruct"
+    MODEL_PATH_LLAMA_VISION: str = "meta-llama/Llama-3.2-11B-Vision-Instruct"
+    MODEL_PATH_DTC: str = "backend/ai_models/dtc_lrm.pt"
+    MODEL_PATH_SAM2_VIDEO: str = "backend/ai_models/sam2_video.pt"
+    MODEL_PATH_SAM3: str = "backend/ai_models/sam3_hq.pt"
+    MODEL_PATH_MAVERICK: str = "meta-llama/Llama-4-400B-Maverick"
+    MODEL_PATH_SPIRIT_LM: str = "facebook/spirit-lm-base"
+    MODEL_PATH_SEAMLESS: str = "facebook/seamless-m4t-v2-large"
+    MODEL_PATH_ANIMATION: str = "backend/ai_models/locomotion_net.pt"
+    MODEL_PATH_SCENESCRIPT: str = "backend/ai_models/scenescript_v1.pt"
+    MODEL_PATH_TACTOVIS: str = "backend/ai_models/tactovis_core.pt"
+    MODEL_PATH_LOCATE3D: str = "backend/ai_models/locate3d_v1.pt"
     
-    # Logging settings
-    LOG_LEVEL: str = "INFO"
-    LOG_FILE: str = "app.log"
-    
-    # Security Hardening
-    RATE_LIMIT_PER_MINUTE: int = 60
+    # Asset Directories
+    UPLOAD_DIR: str = "backend/uploads"
+    DATA_DIR: str = "backend/data"
+    TEMP_DIR: str = "backend/temp"
 
     model_config = SettingsConfigDict(
         env_file=".env",
-        case_sensitive=False
+        extra="ignore"
     )
 
-# Create settings instance
 settings = Settings()
-
-# Environment-specific configurations
-def get_environment_config():
-    """Get environment-specific configuration"""
-    configs = {
-        "development": {
-            "DEBUG": True,
-            "LOG_LEVEL": "DEBUG",
-            "DATABASE_URL": "postgresql://localhost/aetherstore_dev"
-        },
-        "staging": {
-            "DEBUG": False,
-            "LOG_LEVEL": "INFO",
-            "DATABASE_URL": os.getenv("STAGING_DATABASE_URL", "postgresql://localhost/aetherstore_staging")
-        },
-        "production": {
-            "DEBUG": False,
-            "LOG_LEVEL": "WARNING",
-            "DATABASE_URL": os.getenv("PRODUCTION_DATABASE_URL", "postgresql://localhost/aetherstore_prod")
-        }
-    }
-    
-    return configs.get(settings.ENVIRONMENT, configs["development"])

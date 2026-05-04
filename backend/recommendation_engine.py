@@ -14,7 +14,20 @@ from dataclasses import dataclass
 import asyncio
 from datetime import datetime
 import random
+import os
 from shift15m_engine import Shift15MEngine
+
+# Import FashionCLIP Service
+try:
+    from backend.fashion_clip_service import fashion_clip_service
+    FASHION_CLIP_AVAILABLE = True
+except ImportError:
+    try:
+        from fashion_clip_service import fashion_clip_service
+        FASHION_CLIP_AVAILABLE = True
+    except ImportError:
+        FASHION_CLIP_AVAILABLE = False
+        logging.warning("FashionCLIP service not available.")
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -345,17 +358,94 @@ class DeepLearningRecommendationEngine:
         
         return recommendations
 
+class VisualSimilarityEngine:
+    """Recommendation engine based on visual features using OpenFashionCLIP"""
+    
+    def __init__(self):
+        self.fashion_clip = fashion_clip_service if FASHION_CLIP_AVAILABLE else None
+        self.item_embeddings = {}
+        self.is_trained = False
+        
+        logger.info("Visual Similarity Engine initialized")
+    
+    def train(self, items: List[Dict]):
+        """Extract visual features from item images"""
+        if not self.fashion_clip or not self.fashion_clip.initialized:
+            return
+            
+        logger.info(f"Training visual similarity engine with {len(items)} items")
+        
+        for item in items:
+            # Try to find image path
+            image_url = item.get('image_url')
+            if not image_url and 'asset_urls' in item:
+                images = item['asset_urls'].get('images', [])
+                if images:
+                    image_url = images[0]
+            
+            if image_url and os.path.exists(image_url):
+                features = self.fashion_clip.get_image_features(image_url)
+                if features is not None:
+                    self.item_embeddings[item['id']] = features
+        
+        self.is_trained = True
+        logger.info(f"Visual similarity engine trained with {len(self.item_embeddings)} item images")
+    
+    def get_similar_items(self, item_id: str, n_items: int = 10) -> List[RecommendationResult]:
+        """Get visually similar items"""
+        if not self.is_trained or item_id not in self.item_embeddings:
+            return []
+            
+        query_features = self.item_embeddings[item_id]
+        
+        results = []
+        for other_id, other_features in self.item_embeddings.items():
+            if other_id == item_id:
+                continue
+                
+            similarity = float(np.dot(query_features, other_features.T))
+            results.append(
+                RecommendationResult(
+                    product_id=other_id,
+                    score=similarity,
+                    reason="Visual similarity (OpenFashionCLIP)",
+                    category="general",
+                    brand_affinity=0.0,
+                    style_compatibility=0.0
+                )
+            )
+            
+        return sorted(results, key=lambda x: x.score, reverse=True)[:n_items]
+
 class HybridRecommendationEngine:
     """Main recommendation engine that combines multiple approaches"""
     
     def __init__(self):
         self.collaborative_filter = CollaborativeFilteringEngine()
         self.content_filter = ContentBasedFilteringEngine()
+        self.visual_filter = VisualSimilarityEngine()
         self.deep_learning = DeepLearningRecommendationEngine()
         self.shift_engine = Shift15MEngine()
         self.user_profiles = {}
         
-        logger.info("Hybrid Recommendation Engine initialized with SHIFT15M Intelligence")
+        # Load pre-trained Fashion Brain state if available
+        self._load_brain_state()
+        
+        logger.info("Hybrid Recommendation Engine initialized with SHIFT15M Intelligence + OpenFashionCLIP")
+
+    def _load_brain_state(self):
+        """Loads pre-trained SHIFT15M momentum and weights."""
+        state_path = "backend/data/shift15m/brain_state.json"
+        if os.path.exists(state_path):
+            try:
+                with open(state_path, 'r') as f:
+                    state = json.load(f)
+                    self.shift_engine.category_momentum = state.get("momentum", {})
+                    logger.info(f"🧠 Successfully loaded Fashion Brain state (Last Pre-train: {state.get('last_pretrain')})")
+            except Exception as e:
+                logger.error(f"Failed to load Fashion Brain state: {e}")
+        else:
+            logger.warning("No Fashion Brain state found. Engine will start with neutral weights.")
     
     async def train(self, interactions: List[Dict], users: List[Dict], items: List[Dict]):
         """Train all recommendation models"""
@@ -371,6 +461,7 @@ class HybridRecommendationEngine:
         # Train content-based filtering
         if items:
             self.content_filter.train(items)
+            self.visual_filter.train(items)
         
         # Train deep learning model
         if interactions and users and items:
@@ -437,8 +528,21 @@ class HybridRecommendationEngine:
             return self.collaborative_filter.get_popular_items(n_recommendations)
     
     async def get_similar_items(self, item_id: str, n_items: int = 10) -> List[RecommendationResult]:
-        """Get items similar to a given item"""
-        return self.content_filter.get_similar_items(item_id, n_items)
+        """Get items similar to a given item using text and visual features"""
+        content_recs = self.content_filter.get_similar_items(item_id, n_items)
+        visual_recs = self.visual_filter.get_similar_items(item_id, n_items)
+        
+        # Combine recommendations
+        combined = {}
+        for rec in content_recs + visual_recs:
+            if rec.product_id not in combined:
+                combined[rec.product_id] = rec
+            else:
+                # Average the scores if it appears in both
+                combined[rec.product_id].score = (combined[rec.product_id].score + rec.score) / 2
+                combined[rec.product_id].reason += f" & {rec.reason}"
+        
+        return sorted(combined.values(), key=lambda x: x.score, reverse=True)[:n_items]
     
     async def retrain_user_model(self, user_id: str, new_interactions: List[Dict]):
         """Retrain model for a specific user with new interactions"""

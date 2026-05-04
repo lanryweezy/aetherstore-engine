@@ -33,8 +33,8 @@ class VRSceneConfig:
     lighting: str
     environment_map: str
     interaction_mode: str  # 'gaze', 'hand', 'voice'
-    ui_scale: float = 1.0
     comfort_settings: Dict[str, bool]
+    ui_scale: float = 1.0
 
 class VRManager:
     """Manages VR/AR experiences in Aetherstore"""

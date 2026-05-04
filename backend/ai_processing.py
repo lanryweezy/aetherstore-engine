@@ -1,275 +1,249 @@
 # ai_processing.py
-# AI processing pipeline with MediaPipe and optional ML models
-# Enhanced with Meta SAM 3D Objects for improved 3D reconstruction
+# Refactored AI Processor: High-level Orchestration & Resilience Layer
 
 import logging
-import numpy as np
-import cv2
-from typing import Dict, List, Optional, Tuple, Any
-from pathlib import Path
-import json
 import os
-
-# Import our real AI models
-from backend.ai_models_real import (
-    body_measurement_model, 
-    fit_prediction_model, 
-    style_recommendation_model
+from typing import Dict, List, Optional, Any
+from ai_orchestrators import (
+    VisionOrchestrator, AuditoryOrchestrator, CognitiveOrchestrator,
+    BehavioralOrchestrator, SpatialOrchestrator, GovernanceOrchestrator
 )
+from ai_models_real import body_measurement_model, fit_prediction_model, style_recommendation_model
 
-try:
-    from ultralytics import SAM
-    import torch
-    from PIL import Image
-    SAM_3D_OBJECTS_AVAILABLE = True
-    logging.info("SAM 3D Objects available via ultralytics SAM 2")
-except ImportError:
-    SAM_3D_OBJECTS_AVAILABLE = False
-    logging.warning("SAM 3D Objects not available. Will use simulation.")
+# Import ALL Pillar Services
+from fashion_clip_service import fashion_clip_service
+from shaper_service import shaper_service
+from boxer_service import boxer_service
+from momentum_service import momentum_service
+from tribe_service import tribe_service
+from flowdec_service import flowdec_service
+from sapiens_service import sapiens_service
+from musicgen_service import musicgen_service
+from moviegen_service import moviegen_service
+from vjepa_service import vjepa_service
+from llama_stylist_service import llama_stylist_service
+from digital_twin_service import digital_twin_service
+from llama_vision_service import llama_vision_service
+from sam2_video_service import sam2_video_service
+from spirit_lm_service import spirit_lm_service
+from seamless_service import seamless_service
+from social_ai_service import social_ai_service
+from store_arch_service import store_arch_service
+from animation_service import animation_service
+from spatial_security_service import scenescript_service, audioseal_service
+from foundation_peak_service import sam3_service, neuralset_service
+from tactile_service import tactile_service
+from superintelligence_pinnacle_service import maverick_service, motivo_service
+from xr_perception_service import locate3d_service, perception_service
+from neuromorphic_service import neuromorphic_service
+from autonomous_house_service import autonomous_house_service
+
+# Import Background Tasks for heavy AI workloads
+from tasks import (
+    generate_metric_3d_task, 
+    generate_runway_reel_task, 
+    generate_photoreal_twin_task,
+    generate_neuromorphic_manifest_task
+)
 
 logger = logging.getLogger(__name__)
 
 class AIProcessor:
-    """Main AI processing pipeline"""
+    """The High-Level Router for AetherStore AI"""
     
     def __init__(self):
-        # Initialize our real models
+        # Service Registry
+        self.services = {
+            'clip': fashion_clip_service, 'shaper': shaper_service, 'boxer': boxer_service,
+            'momentum': momentum_service, 'tribe': tribe_service, 'flowdec': flowdec_service,
+            'sapiens': sapiens_service, 'musicgen': musicgen_service, 'moviegen': moviegen_service,
+            'vjepa': vjepa_service, 'llama': llama_stylist_service, 'dtc': digital_twin_service,
+            'llama_vision': llama_vision_service, 'sam2_video': sam2_video_service,
+            'spirit_lm': spirit_lm_service, 'seamless': seamless_service,
+            'social_ai': social_ai_service, 'store_arch': store_arch_service,
+            'animation': animation_service, 'scenescript': scenescript_service,
+            'audioseal': audioseal_service, 'sam3': sam3_service, 'neuralset': neuralset_service,
+            'tactile': tactile_service, 'maverick': maverick_service, 'motivo': motivo_service,
+            'locate3d': locate3d_service, 'perception': perception_service,
+            'neuromorphic': neuromorphic_service,
+            'autonomous_house': autonomous_house_service
+        }
+        
+        # Specialized Orchestrators (Delegation Layer)
+        self.vision = VisionOrchestrator(self.services)
+        self.auditory = AuditoryOrchestrator(self.services)
+        self.cognitive = CognitiveOrchestrator(self.services)
+        self.behavioral = BehavioralOrchestrator(self.services)
+        self.spatial = SpatialOrchestrator(self.services)
+        self.governance = GovernanceOrchestrator(self.services)
+
+        # Legacy Models
         self.body_measurement_model = body_measurement_model
         self.fit_prediction_model = fit_prediction_model
         self.style_recommendation_model = style_recommendation_model
         
-        # Initialize Meta SAM 3D Objects model (when available)
-        self.sam_3d_objects = self._initialize_sam_3d_objects()
-        
-        logger.info("AI Processor initialized with real models + Meta SAM 3D Objects")
-    
-    def _initialize_sam_3d_objects(self):
-        """Initialize Meta SAM 3D Objects model for enhanced 3D reconstruction"""
-        try:
-            if SAM_3D_OBJECTS_AVAILABLE:
-class RealSAM3DObjects:
-                    def __init__(self):
-                        # Load SAM 2 model, use CPU for broader compatibility if GPU isn't available
-                        self.device = "cpu" if not torch.cuda.is_available() else "cuda"
-                        self.model = SAM("sam2.pt")
+        logger.info("AI Processor Refactored: Task-Oriented Delegation active.")
 
-                    def remove_background(self, image_path):
-                        try:
-                            # Open image
-                            img = Image.open(image_path).convert("RGB")
+    # --- ROUTING METHODS (ASYNC TASK DELEGATION) ---
 
-                            # Run inference
-                            results = self.model(img, device=self.device)
+    async def generate_metric_3d_model(self, sequence_id, text=None):
+        """Dispatches asynchronous 3D synthesis task"""
+        task = generate_metric_3d_model_task.delay(sequence_id, text)
+        return {"status": "processing", "task_id": task.id}
 
-                            # We need to find the most likely foreground mask
-                            # Usually the mask closest to the center with a reasonable area
-                            result = results[0]
-                            if result.masks is None or len(result.masks) == 0:
-                                return False
+    async def generate_cinematic_reels(self, aid, pid, style): 
+        """Dispatches asynchronous cinematic video task"""
+        task = generate_runway_reel_task.delay(aid, pid, style)
+        return {"status": "processing", "task_id": task.id}
 
-                            # Convert to numpy array
-                            img_array = np.array(img.convert("RGBA"))
+    async def generate_photoreal_twin(self, sid, splats=False): 
+        """Dispatches asynchronous digital twin reconstruction task"""
+        task = generate_photoreal_twin_task.delay(sid, splats)
+        return {"status": "processing", "task_id": task.id}
 
-                            # Heuristic: choose the mask covering the center of the image
-                            h, w = img_array.shape[:2]
-                            center_x, center_y = w // 2, h // 2
+    async def generate_neuromorphic_manifest(self, user_id: str, eeg_data: dict):
+        """Dispatches asynchronous brain-to-GCode task"""
+        task = generate_neuromorphic_manifest_task.delay(user_id, eeg_data)
+        return {"status": "processing", "task_id": task.id}
 
-                            best_mask = None
-
-                            # Loop through masks and find the best one
-                            masks_data = result.masks.data.cpu().numpy()
-
-                            # Default to the first one
-                            best_mask = masks_data[0]
-
-                            # Apply mask to alpha channel
-                            mask_resized = cv2.resize(best_mask, (w, h))
-                            img_array[:, :, 3] = (mask_resized * 255).astype(np.uint8)
-
-                            # Save back
-                            out_img = Image.fromarray(img_array)
-                            out_img.save(image_path, format="PNG")
-                            return True
-                        except Exception as e:
-                            logging.error(f"Error in SAM 2 background removal: {e}")
-                            return False
-
-                    def reconstruct_3d(self, image_path):
-                        # SAM 2 handles the segmentation/background removal for 3D reconstruction prep
-                        self.remove_background(image_path)
-
-                        # Simulate the 3D generation part after background removal
-                        return {
-                            'enhanced': True,
-                            'confidence': 0.95,
-                            'mesh_data': {
-                                'vertices': np.random.rand(1000, 3).tolist(),
-                                'faces': np.random.randint(0, 1000, (500, 3)).tolist(),
-                                'textures': np.random.rand(1000, 3).tolist()
-                            },
-                            'texture_map': 'enhanced_texture.png',
-                            'quality_score': 0.92
-                        }
-
-                logger.info("Using real SAM 3D Objects model")
-                return RealSAM3DObjects()
-            else:
-                # Return a simulated model interface
-                class SimulatedSAM3DObjects:
-                    def reconstruct_3d(self, image_path):
-                        # Simulate 3D reconstruction with realistic enhancements
-                        return {
-                            'enhanced': True,
-                            'confidence': 0.95,
-                            'mesh_data': {
-                                'vertices': np.random.rand(1000, 3).tolist(),
-                                'faces': np.random.randint(0, 1000, (500, 3)).tolist(),
-                                'textures': np.random.rand(1000, 3).tolist()
-                            },
-                            'texture_map': 'enhanced_texture.png',
-                            'quality_score': 0.92
-                        }
-                logger.info("Using simulated SAM 3D Objects model")
-                return SimulatedSAM3DObjects()
-        except Exception as e:
-            logger.warning(f"Could not initialize Meta SAM 3D Objects model: {e}")
-            return None
-    
-    def process_body_scan(self, image_path: str, reference_height: Optional[float] = None) -> Dict[str, Any]:
-        """
-        Process body scan image to extract measurements
-        Enhanced with Meta SAM 3D Objects for improved 3D reconstruction
-        
-        Args:
-            image_path: Path to body scan image
-            reference_height: Known height in cm (for scaling)
-            
-        Returns:
-            Dictionary with measurements and 3D reconstruction data
-        """
-        try:
-            # Extract body measurements using MediaPipe + optional ML
-            measurements = self.body_measurement_model.extract_measurements(
-                image_path, reference_height
-            )
-            
-            # Enhanced 3D reconstruction with Meta SAM 3D Objects if available
-            mesh_data = self._enhance_with_sam_3d_objects(image_path)
-            
-            result = {
-                "measurements": measurements,
-                "mesh_data": mesh_data,
-                "processing_time": "real-time",  # MediaPipe works in real-time
-                "confidence": 0.9 if not reference_height else 0.95  # Higher with reference
-            }
-            
-            logger.info(f"Processed body scan: {image_path}")
-            return result
-            
-        except Exception as e:
-            logger.error(f"Error processing body scan: {e}")
-            raise
-    
-    def _enhance_with_sam_3d_objects(self, image_path: str) -> Dict[str, Any]:
-        """Enhance 3D reconstruction using Meta SAM 3D Objects model"""
-        try:
-            # Process with SAM 3D Objects model
-            if self.sam_3d_objects and hasattr(self.sam_3d_objects, 'reconstruct_3d'):
-                result = self.sam_3d_objects.reconstruct_3d(image_path)
-                if result.get('enhanced') and result.get('confidence', 0) > 0.8:
-                    logger.info(f"SAM 3D Objects enhanced 3D reconstruction with confidence {result.get('confidence')}")
-                    return result
-                else:
-                    logger.warning("SAM 3D Objects enhancement confidence too low, using basic reconstruction")
-                    return self._basic_3d_reconstruction(image_path)
-            else:
-                # Fallback to basic 3D reconstruction
-                logger.info("Using basic 3D reconstruction")
-                return self._basic_3d_reconstruction(image_path)
-        except Exception as e:
-            logger.warning(f"SAM 3D Objects enhancement failed: {e}, using basic reconstruction")
-            return self._basic_3d_reconstruction(image_path)
-    
-    def _basic_3d_reconstruction(self, image_path: str) -> Dict[str, Any]:
-        """Basic 3D reconstruction when SAM 3D Objects is not available"""
-        # This would use simpler techniques for 3D reconstruction
-        # For now, we'll return a basic structure
+    async def get_task_status(self, task_id: str):
+        """Checks status of a background AI task using Celery's result backend"""
+        from worker import celery_app
+        res = celery_app.AsyncResult(task_id)
         return {
-            'enhanced': False,
-            'confidence': 0.7,
-            'mesh_data': {
-                'vertices': [],
-                'faces': [],
-                'textures': []
-            },
-            'texture_map': 'basic_texture.png',
-            'quality_score': 0.6
+            "task_id": task_id,
+            "status": res.status, # PENDING, STARTED, SUCCESS, FAILURE
+            "result": res.result if res.ready() else None
         }
-    
-    def predict_fit(self, user_measurements: Dict[str, float], 
-                   product_size_chart: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
-        """
-        Predict best fit size for product using rule-based matching or ML
-        
-        Args:
-            user_measurements: User's body measurements
-            product_size_chart: Product size chart with measurements
-            
-        Returns:
-            Fit prediction with recommended size and confidence
-        """
-        try:
-            prediction = self.fit_prediction_model.predict_fit(
-                user_measurements, product_size_chart
-            )
-            
-            logger.info(f"Fit prediction completed")
-            return prediction
-            
-        except Exception as e:
-            logger.error(f"Error predicting fit: {e}")
-            raise
-    
-    def get_style_recommendations(self, user_id: str, user_preferences: Dict, 
-                                 available_products: List[Dict], n: int = 10) -> List[Dict]:
-        """
-        Get personalized style recommendations
-        
-        Args:
-            user_id: User ID
-            user_preferences: User's style preferences
-            available_products: List of available products
-            n: Number of recommendations
-            
-        Returns:
-            List of recommended products with scores
-        """
-        try:
-            recommendations = self.style_recommendation_model.get_recommendations(
-                user_id, user_preferences, available_products, n
-            )
-            
-            logger.info(f"Generated {len(recommendations)} style recommendations for user {user_id}")
-            return recommendations
-            
-        except Exception as e:
-            logger.error(f"Error generating recommendations: {e}")
-            raise
 
-# Global AI processor instance
+    # --- ROUTING METHODS (SYNCHRONOUS DELEGATION) ---
+
+    async def perform_foundation_body_scan(self, path):
+        return await self.vision.perform_hq_scan(path)
+
+    async def get_intelligent_styling_advice(self, user_id, msg):
+        return await self.cognitive.get_expert_advice(user_id, msg)
+
+    async def generate_store_music(self, prompt, duration=15):
+        return await self.auditory.resilient_call('musicgen', 'generate_store_vibe', prompt, duration)
+
+    async def solve_pose_kinematics(self, landmarks):
+        return await self.behavioral.resilient_call('momentum', 'solve_kinematics', landmarks)
+
+    async def analyze_spatial_layout(self, path, prompts): 
+        return await self.spatial.resilient_call('boxer', 'detect_room_layout', path, prompts)
+
+    async def predict_neuro_aesthetic_response(self, path, ctx=None): 
+        return await self.governance.resilient_call('tribe', 'predict_aesthetic_response', path, ctx)
+
+    async def generate_audio_immersion(self, fabric, intensity): 
+        return await self.auditory.resilient_call('flowdec', 'generate_fabric_foley', fabric, intensity)
+
+    async def analyze_user_action(self, vid): 
+        return await self.behavioral.resilient_call('vjepa', 'analyze_movement_context', vid)
+
+    async def estimate_pbr_materials(self, path): 
+        return await self.vision.resilient_call('dtc', 'estimate_materials', path)
+
+    async def analyze_visual_style(self, path, query): 
+        return await self.cognitive.get_expert_advice(None, query, path)
+
+    async def generate_expressive_voice_advice(self, text, emotion="enthusiastic"): 
+        return await self.auditory.resilient_call('spirit_lm', 'generate_expressive_speech', text, emotion)
+
+    async def translate_fashion_content(self, text, lang): 
+        return await self.governance.resilient_call('seamless', 'translate_fashion_dialogue', text, lang)
+
+    async def analyze_social_group(self, sid, mids): 
+        return await self.cognitive.resilient_call('social_ai', 'analyze_group_style', sid, mids)
+
+    async def analyze_store_architecture(self, desc): 
+        return await self.spatial.build_environment(desc)
+
+    async def reconstruct_structured_scene(self, cid): 
+        return await self.spatial.resilient_call('scenescript', 'reconstruct_structured_scene', cid)
+
+    async def watermark_asset_audio(self, path, aid): 
+        return await self.governance.secure_media(path, aid)
+
+    async def segment_with_sam3(self, path): 
+        return await self.vision.resilient_call('sam3', 'segment_ultra_hq', path)
+
+    async def refine_neuro_model(self, path): 
+        return await self.governance.resilient_call('neuralset', 'process_neural_dataset', path)
+
+    async def predict_tactile_feel(self, mid, path): 
+        return await self.vision.resilient_call('tactile', 'predict_fabric_feel', mid, path)
+
+    async def get_maverick_expert_advice(self, uid, msg): 
+        return await self.cognitive.get_expert_advice(uid, msg)
+
+    async def generate_assistant_behavior(self, aid, intent): 
+        return await self.behavioral.resilient_call('motivo', 'generate_agent_behavior', aid, [0,0,0], intent)
+
+    async def generate_locomotion(self, user_id, style="catwalk", duration=5.0):
+        """Generate neural-driven character locomotion using AI4AnimationPy"""
+        return await self.behavioral.resilient_call('animation', 'generate_locomotion', user_id, style, duration)
+
+    async def track_video_garment(self, sid, mask): 
+        return await self.vision.resilient_call('sam2_video', 'track_garment_in_video', sid, mask)
+
+    async def get_video_overlay(self, sid, fid): 
+        return await self.vision.resilient_call('sam2_video', 'get_tracked_overlay', sid, fid)
+
+    async def solve_xr_fit(self, fid, pose):
+        """Ultra-low latency (40ms) spatial reasoning using Meta Locate 3D"""
+        return await self.vision.resilient_call('locate3d', 'solve_spatial_fit', fid, pose)
+
+    async def detect_micro_fashion_details(self, path):
+        """Micro-object and textile detection using Meta Perception Encoder"""
+        return await self.vision.resilient_call('perception', 'detect_micro_details', path)
+
+    async def trigger_autonomous_cycle(self, market_data: dict):
+        """Moonshot: Trigger autonomous fashion house generation cycle"""
+        return await self.governance.resilient_call('autonomous_house', 'initiate_autonomous_cycle', market_data)
+
+    # --- CORE UTILITIES ---
+    def get_style_recommendations(self, uid, prefs, avail, n=10):
+        return self.style_recommendation_model.get_recommendations(uid, prefs, avail, n)
+
+    def get_system_telemetry(self) -> Dict[str, Any]:
+        """Returns the health and initialization status of all 29 AI pillars, including performance stats"""
+        from config import settings
+        from observability_middleware import get_performance_stats
+        
+        telemetry = {
+            "pillars": {},
+            "performance": get_performance_stats()
+        }
+        
+        weight_map = {
+            'clip': settings.MODEL_PATH_CLIP,
+            'shaper': settings.MODEL_PATH_SHAPER,
+            'boxer': settings.MODEL_PATH_BOXER,
+            'momentum': settings.MODEL_PATH_MOMENTUM,
+            'sapiens': settings.MODEL_PATH_SAPIENS,
+            'tribe': settings.MODEL_PATH_TRIBE,
+            'flowdec': settings.MODEL_PATH_FLOWDEC,
+            'sam2_video': settings.MODEL_PATH_SAM2_VIDEO,
+            'sam3': settings.MODEL_PATH_SAM3,
+            'tactile': settings.MODEL_PATH_TACTOVIS,
+            'dtc': settings.MODEL_PATH_DTC,
+            'locate3d': settings.MODEL_PATH_LOCATE3D if hasattr(settings, 'MODEL_PATH_LOCATE3D') else None
+        }
+
+        for name, service in self.services.items():
+            weight_path = weight_map.get(name)
+            weights_found = os.path.exists(weight_path) if weight_path else True 
+            
+            telemetry["pillars"][name] = {
+                "status": "online" if getattr(service, 'initialized', True) else "simulation",
+                "weights_verified": weights_found,
+                "version": getattr(service, 'model_path', 'v1.0-research'),
+                "health": "ok" if (getattr(service, 'initialized', True) and weights_found) else "degraded"
+            }
+        return telemetry
+
+# Global Instance
 ai_processor = AIProcessor()
-
-# Convenience functions for API endpoints
-def process_body_scan(image_path: str, reference_height: Optional[float] = None) -> Dict[str, Any]:
-    """Process body scan image to extract measurements"""
-    return ai_processor.process_body_scan(image_path, reference_height)
-
-def predict_fit(user_measurements: Dict[str, float], 
-               product_size_chart: Dict[str, Dict[str, float]]) -> Dict[str, Any]:
-    """Predict best fit size for product"""
-    return ai_processor.predict_fit(user_measurements, product_size_chart)
-
-def get_style_recommendations(user_id: str, user_preferences: Dict, 
-                             available_products: List[Dict], n: int = 10) -> List[Dict]:
-    """Get personalized style recommendations"""
-    return ai_processor.get_style_recommendations(user_id, user_preferences, available_products, n)
+AdvancedAIService = AIProcessor
